@@ -19,6 +19,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
       ['/admin/retention', ['audit:read']],
       ['/admin/dns', ['domain:manage']],
       ['/admin/github', ['policy:manage']],
+      ['/admin/ollama', ['policy:manage']],
       ['/admin', ['user:manage', 'group:manage', 'role:manage', 'notification:manage', 'audit:read', 'policy:manage', 'domain:manage']],
       ['/audit', ['audit:read']],
       ['/deployments', ['deployment:read']],

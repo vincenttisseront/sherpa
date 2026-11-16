@@ -148,6 +148,14 @@ function download() {
   URL.revokeObjectURL(a.href)
 }
 
+// Filtres affichés repris pour l'analyse : le modèle lit les mêmes lignes que l'utilisateur.
+const analysisBody = computed(() => ({
+  levels: levels.value.length ? levels.value : undefined,
+  phases: phase.value ? [phase.value] : undefined,
+  service: service.value || undefined,
+  limit: 1000,
+}))
+
 function resetFilters() {
   search.value = ''
   levels.value = [...DEFAULT_LEVELS]
@@ -204,6 +212,7 @@ watch(() => props.deploymentId, () => {
       <span class="spacer" />
       <span v-if="deploymentId && live" class="live" :class="{ on: connected }">{{ connected ? '● en direct' : '○ connexion…' }}</span>
       <UiButton size="sm" variant="ghost" :aria-pressed="follow" @click="follow = !follow">{{ follow ? 'Suivi' : 'Suivre' }}</UiButton>
+      <LogAnalysis v-if="deploymentId" :url="`/api/deployments/${deploymentId}/logs/analyze`" :body="analysisBody" />
       <UiButton size="sm" aria-label="Télécharger" title="Télécharger les logs" @click="download"><Download :size="14" /></UiButton>
     </div>
     <div ref="box" class="lines mono" :style="{ height }" role="log" aria-live="polite" @scroll="onScroll">

@@ -201,6 +201,7 @@ const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.in
           <input v-model="logFilter" class="input" type="search" placeholder="Filtrer les lignes…" aria-label="Filtrer les logs">
           <UiSwitch v-model="follow" label="En direct" />
           <UiButton size="sm" variant="ghost" aria-label="Actualiser" @click="loadLogs"><RefreshCw :size="14" /></UiButton>
+          <LogAnalysis :url="`/api/endpoints/${endpointId}/containers/${containerId}/logs/analyze`" :body="{ tail: 300 }" />
         </div>
         <section v-if="insights.length" class="insights" aria-label="Analyse des logs">
           <h3 class="small">Analyse des logs <span class="muted tiny">({{ insights.length }} cause{{ insights.length > 1 ? 's' : '' }} reconnue{{ insights.length > 1 ? 's' : '' }})</span></h3>

@@ -66,12 +66,15 @@ const RULES: [string, RegExp, string][] = [
   ['POST', /^\/api\/admin\/retention\/purge$/, 'Lancement de la purge'],
   ['GET', /^\/api\/admin\/readiness$/, 'Vérification des prérequis de mise en service'],
   ['POST', /^\/api\/onboarding\/github-check$/, 'Test de la connexion à GitHub'],
+  ['POST', /^\/api\/admin\/ollama\/test$/, 'Test de la connexion à Ollama'],
+  ['POST', /^\/api\/deployments\/[^/]+\/logs\/analyze$/, 'Analyse des logs du déploiement par Ollama'],
+  ['POST', /^\/api\/endpoints\/[^/]+\/containers\/[^/]+\/logs\/analyze$/, 'Analyse des logs du conteneur par Ollama'],
   ['POST', /^\/api\/auth\/setup$/, 'Création du compte administrateur'],
   ['POST', /^\/api\/auth\/invitations\//, 'Activation du compte'],
   ['POST', /^\/api\/account\/password$/, 'Changement du mot de passe'],
 ]
 /** Requêtes jamais suivies (instantanées, flux, ou propres au suivi). */
-const IGNORED = /^\/api\/(progress|health|live|auth\/me|auth\/login|auth\/logout|saved-views|deployments\/[^/]+\/logs)/
+const IGNORED = /^\/api\/(progress|health|live|auth\/me|auth\/login|auth\/logout|saved-views|deployments\/[^/]+\/logs(?!\/analyze))/
 
 export function activityLabel(method: string, path: string): string | null {
   if (IGNORED.test(path)) return null

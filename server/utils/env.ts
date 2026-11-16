@@ -71,6 +71,10 @@ const schema = z.object({
   AUTO_REBUILD_INTERVAL_MIN: z.coerce.number().int().min(1).max(1440).default(10),
   /** Connecteurs GitHub : intervalle des relevés (minutes). */
   GITHUB_SCAN_INTERVAL_MIN: z.coerce.number().int().min(5).max(10_080).default(60),
+  /** Connecteur Ollama (analyse de logs) : « mock » simule les réponses (développement, tests). */
+  OLLAMA_ADAPTER: z.enum(['mock', 'http']).default('http'),
+  /** Analyses simultanées au plus : un modèle local sature vite, au-delà la demande est refusée (429). */
+  OLLAMA_MAX_CONCURRENT: z.coerce.number().int().min(1).max(16).default(2),
   RETENTION_DAYS: z.coerce.number().int().min(1).default(183),
   /** Historique des ressources des conteneurs (relevé chaque minute) : jours conservés. */
   METRICS_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),

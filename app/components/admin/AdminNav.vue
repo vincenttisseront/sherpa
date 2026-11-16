@@ -10,6 +10,7 @@ const links = computed(() => [
   { to: '/admin/notifications', label: 'Notifications', show: hasAny('notification:manage') },
   { to: '/admin/dns', label: 'Comptes DNS', show: hasAny('domain:manage') },
   { to: '/admin/github', label: 'Connecteurs GitHub', show: hasAny('policy:manage') },
+  { to: '/admin/ollama', label: 'Ollama', show: hasAny('policy:manage') },
   { to: '/admin/retention', label: 'Rétention', show: hasAny('audit:read') },
 ].filter(l => l.show))
 </script>
