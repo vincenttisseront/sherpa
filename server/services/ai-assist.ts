@@ -6,11 +6,11 @@
  */
 import { and, desc, eq, gte } from 'drizzle-orm'
 import { createError } from 'h3'
-import type { AiReportDto } from '../../shared/schemas/ollama'
+import type { AiReportDto, AnalysisExplainInput } from '../../shared/schemas/ollama'
 import { METRIC_RANGES, type MetricRange } from '../../shared/schemas/metrics'
 import { portainer } from '../adapters/portainer'
 import { db, schema } from '../db/client'
-import { deploymentParts, metricsParts, proxyParts, supportParts } from '../lib/ollama/contexts'
+import { analysisParts, deploymentParts, metricsParts, proxyParts, supportParts } from '../lib/ollama/contexts'
 import { noProgress, type Progress } from '../utils/progress'
 import { runAiReport } from './ai-task'
 import { diagnoseTarget } from './diagnostic'
@@ -110,5 +110,17 @@ export async function explainProxies(row: EndpointRow, opts: { focus?: string, p
     header: [`Hôte : ${row.server.name} (endpoint ${row.ep.name})`],
     parts: proxyParts(map),
     focus: opts.focus,
+  })
+}
+
+/** Explication des blocages d'une analyse Compose : constats déjà filtrés par la route, jamais le Compose. */
+export async function explainAnalysisBlockers(input: AnalysisExplainInput, ctx: { stack?: string, progress?: Progress } = {}): Promise<AiReportDto> {
+  const progress = ctx.progress ?? noProgress
+  await progress.step('Analyse par le modèle Ollama (peut prendre une minute)', 1, 1)
+  return runAiReport({
+    feature: 'analysis-blockers',
+    header: [ctx.stack ? `Analyse du Compose de la stack ${ctx.stack}` : 'Analyse d\'un fichier Compose'],
+    parts: analysisParts(input),
+    focus: input.focus,
   })
 }

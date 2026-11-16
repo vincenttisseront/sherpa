@@ -4,6 +4,7 @@
  * (aucune E/S), testées.
  */
 import type { DeploymentDetailDto } from '../../../shared/schemas/deployments'
+import type { AnalysisExplainInput } from '../../../shared/schemas/ollama'
 import type { TargetDiagnostic } from '../../../shared/schemas/diagnostic'
 import type { ActiveAlertDto, MetricPoint, MetricsDto } from '../../../shared/schemas/metrics'
 import type { ProxyMapDto } from '../../../shared/schemas/proxy-map'
@@ -152,5 +153,30 @@ export function proxyParts(map: ProxyMapDto): ContextPart[] {
     { title: 'Erreurs ACME récentes', lines: acme, weight: 2 },
     { title: 'Ports publiés hors proxy', lines: direct, weight: 1 },
     { title: 'Avertissements de la topologie', lines: t.warnings, weight: 1 },
+  ]
+}
+
+// --- Blocages de l'analyse Compose ------------------------------------------------------------
+
+const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 } as const
+
+/**
+ * Constats de l'analyse (codes, messages, ports, volumes, réseaux, domaines). Jamais le Compose ni
+ * les valeurs de variables : la liste blanche est appliquée à l'entrée de la route (Zod).
+ */
+export function analysisParts(a: AnalysisExplainInput): ContextPart[] {
+  const issue = (i: AnalysisExplainInput['issues'][number]) => `[${i.severity}] ${i.code}${i.service ? ` (service ${i.service})` : ''} : ${i.message}${i.image ? ` — image ${i.image}` : ''}`
+  const sorted = [...a.issues].sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity])
+  const refusedPorts = a.ports.filter(p => !p.accepted || p.policy === 'approval' || p.policy === 'forbidden')
+  const refusedMounts = a.mounts.filter(m => !m.accepted)
+  const refusedNets = a.networks.filter(n => n.status === 'refused')
+  const refusedExpo = a.exposures.filter(e => !e.accepted)
+  return [
+    { title: 'Verdict', lines: [`Compose ${a.ok ? 'conforme' : 'non conforme'} : ${a.issues.filter(i => i.severity === 'error').length} erreur(s), ${a.issues.filter(i => i.severity === 'warning').length} avertissement(s)`], weight: 1 },
+    { title: 'Constats de l\'analyse', lines: sorted.map(issue), weight: 4 },
+    { title: 'Ports refusés ou à valider', lines: refusedPorts.map(p => `service ${p.service} : ${p.entry} (${p.published ?? 'port non publié'}/${p.protocol}) → ${p.policy}${p.accepted ? '' : ', refusé'} : ${p.reason}`), weight: 2 },
+    { title: 'Volumes refusés', lines: refusedMounts.map(m => `service ${m.service} : ${m.type} ${m.source ?? '(anonyme)'} → ${m.target}${m.readOnly ? ' (lecture seule)' : ''} : ${m.reason}`), weight: 2 },
+    { title: 'Réseaux refusés', lines: refusedNets.map(n => `${n.name}${n.external ? ' (externe)' : ''} : ${n.reason}`), weight: 1 },
+    { title: 'Expositions refusées', lines: refusedExpo.map(e => `service ${e.service} : ${e.host}:${e.port} (${e.router}) : ${e.reason}`), weight: 2 },
   ]
 }

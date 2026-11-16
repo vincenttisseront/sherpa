@@ -8,7 +8,7 @@ import type { AnalysisResult, PortApproval, PortReport } from '#shared/schemas/a
 import { type UnpublishRequest, containerPortOf, suggestWebHost, webHint } from '#shared/utils/web-ports'
 
 // proxy : reverse proxy de l'endpoint (null : aucun ; absent : inconnu, section masquée).
-const props = defineProps<{ analysis: AnalysisResult, busySource?: string | null, proxy?: { allowedDomains: string[], provider?: string } | null, busyPort?: string | null }>()
+const props = defineProps<{ analysis: AnalysisResult, targetId?: string, busySource?: string | null, proxy?: { allowedDomains: string[], provider?: string } | null, busyPort?: string | null }>()
 const emit = defineEmits<{ 'use-image': [{ service: string, from: string, image: string }], 'exclude-service': [{ service: string, excluded: boolean }], 'suspend-service': [{ service: string, suspended: boolean }], 'unpublish-port': [UnpublishRequest] }>()
 const suspendedServices = computed(() => props.analysis.issues.filter(i => i.code === 'service.suspended' && i.service).map(i => i.service!))
 const excludedServices = computed(() => props.analysis.issues.filter(i => i.code === 'service.excluded' && i.service).map(i => i.service!))
@@ -26,6 +26,18 @@ const tabs = computed(() => [
 const errors = computed(() => props.analysis.issues.filter(i => i.severity === 'error'))
 const warnings = computed(() => props.analysis.issues.filter(i => i.severity === 'warning'))
 const infos = computed(() => props.analysis.issues.filter(i => i.severity === 'info'))
+/** Constats envoyés à l'explication par Ollama : sans le Compose ni les valeurs de variables. */
+const explainBody = computed(() => {
+  const a = props.analysis
+  return {
+    ok: a.ok,
+    issues: a.issues.map(i => ({ severity: i.severity, code: i.code, service: i.service, message: i.message, image: i.image })),
+    ports: a.ports.map(p => ({ service: p.service, entry: p.entry, published: p.published, protocol: p.protocol, policy: p.policy, accepted: p.accepted, reason: p.reason })),
+    mounts: a.mounts.map(m => ({ service: m.service, type: m.type, source: m.source, target: m.target, readOnly: m.readOnly, accepted: m.accepted, reason: m.reason })),
+    networks: a.networks.map(n => ({ name: n.name, external: n.external, status: n.status, reason: n.reason })),
+    exposures: a.exposures.map(e => ({ service: e.service, host: e.host, port: e.port, router: e.router, accepted: e.accepted, reason: e.reason })),
+  }
+})
 const pendingPorts = computed(() => props.analysis.ports.filter(p => p.policy === 'approval' && p.published !== null))
 
 function approval(service: string, published: number, protocol: 'tcp' | 'udp') {
@@ -58,6 +70,7 @@ const NET = { allowed: { label: 'Autorisé', tone: 'success' }, created: { label
     <div class="verdict" :class="analysis.ok ? 'ok' : 'ko'">
       <strong>{{ analysis.ok ? 'Compose conforme' : `${errors.length} point(s) bloquant(s)` }}</strong>
       <span class="muted">Stack <code>{{ analysis.stackName }}</code> · {{ analysis.services.length }} service(s) · {{ analysis.builds.length }} build(s) sur le serveur cible</span>
+      <AiReport v-if="targetId && (errors.length || warnings.length)" feature="analysis-blockers" :body="{ targetId, ...explainBody }" label="Expliquer avec Ollama" title="Explication des blocages" causesLabel="Blocages" actionsLabel="Pour les lever" />
     </div>
 
     <UiTabs v-model="tab" :tabs="tabs" />
@@ -228,6 +241,7 @@ const NET = { allowed: { label: 'Autorisé', tone: 'success' }, created: { label
 .verdict { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) var(--space-4); border-radius: var(--radius); }
 .verdict.ok { background: var(--success-bg); color: var(--success); }
 .verdict.ko { background: var(--danger-bg); color: var(--danger); }
+.verdict > :deep(button) { align-self: flex-start; margin-top: var(--space-2); }
 .stack { display: flex; flex-direction: column; gap: var(--space-4); }
 h3 { margin: 0 0 var(--space-2); font-size: 14px; }
 .small { font-size: 12.5px; margin: 0; }

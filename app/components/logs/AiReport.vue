@@ -10,8 +10,8 @@ import { Copy, Sparkles } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
   feature: OllamaFeature
-  /** Route de la demande (POST). */
-  url: string
+  /** Route de la demande (POST) ; par défaut la route commune des assistants. */
+  url?: string
   /** Corps de la demande ; la question libre y est ajoutée si `ask` est actif. */
   body?: Record<string, unknown>
   label?: string
@@ -23,7 +23,7 @@ const props = withDefaults(defineProps<{
   /** Champ « Orienter l'analyse » (question libre). */
   ask?: boolean
   size?: 'sm' | 'md'
-}>(), { body: () => ({}), label: 'Analyser avec Ollama', title: 'Analyse par Ollama', causesLabel: 'Causes probables', actionsLabel: 'Quoi faire', draftLabel: 'Texte proposé', ask: true, size: 'sm' })
+}>(), { url: undefined, body: () => ({}), label: 'Analyser avec Ollama', title: 'Analyse par Ollama', causesLabel: 'Causes probables', actionsLabel: 'Quoi faire', draftLabel: 'Texte proposé', ask: true, size: 'sm' })
 
 const toast = useToast()
 const { data: status } = useFetch<OllamaStatusDto>('/api/ollama/status', { key: 'ollama-status', default: () => ({ enabled: false, model: null, features: [] }) })
@@ -42,7 +42,7 @@ async function run() {
   loading.value = true
   error.value = null
   try {
-    result.value = await $fetch<AiReportDto>(props.url, { method: 'POST', body: { ...props.body, focus: focus.value.trim() || undefined } })
+    result.value = await $fetch<AiReportDto>(props.url ?? `/api/ollama/assist/${props.feature}`, { method: 'POST', body: { ...props.body, focus: focus.value.trim() || undefined } })
   }
   catch (err) {
     error.value = apiError(err).message

@@ -110,3 +110,26 @@ export type LogAnalysisDto = AiReportDto
 /** Corps commun aux routes d'analyse : question libre facultative pour orienter le modèle. */
 export const FOCUS_MAX = 300
 export const logAnalysisFocus = z.string().trim().max(FOCUS_MAX).optional()
+
+/**
+ * Constats d'une analyse Compose soumis à l'explication par Ollama. Liste blanche stricte : seuls
+ * ces champs sont lus (tout autre champ, dont le Compose source ou final, est ignoré par Zod), avec
+ * des longueurs bornées. Les valeurs de variables et le contenu du Compose n'y figurent jamais.
+ */
+const sev = z.enum(['error', 'warning', 'info'])
+const short = (max: number) => z.string().max(max)
+export const analysisExplainInput = z.object({
+  ok: z.boolean().default(false),
+  issues: z.array(z.object({ severity: sev, code: short(80), service: short(120).optional(), message: short(600), image: short(300).optional() })).max(150).default([]),
+  ports: z.array(z.object({
+    service: short(120), entry: short(200), published: z.number().int().min(0).max(65_535).nullable(), protocol: z.enum(['tcp', 'udp']),
+    policy: z.enum(['allowed', 'approval', 'forbidden', 'internal']), accepted: z.boolean(), reason: short(400),
+  })).max(150).default([]),
+  mounts: z.array(z.object({
+    service: short(120), type: short(40), source: short(300).nullable(), target: short(300), readOnly: z.boolean(), accepted: z.boolean(), reason: short(400),
+  })).max(150).default([]),
+  networks: z.array(z.object({ name: short(120), external: z.boolean(), status: z.enum(['allowed', 'created', 'refused']), reason: short(400) })).max(60).default([]),
+  exposures: z.array(z.object({ service: short(120), host: short(255), port: z.number().int().min(0).max(65_535), router: short(200), accepted: z.boolean(), reason: short(400) })).max(100).default([]),
+  focus: logAnalysisFocus,
+})
+export type AnalysisExplainInput = z.infer<typeof analysisExplainInput>

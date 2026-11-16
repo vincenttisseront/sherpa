@@ -45,6 +45,17 @@ export const TASKS: Partial<Record<OllamaFeature, TaskSpec>> = {
     causes: 'constats chiffrés (ex. « mémoire de 40 % à 88 % en 6 h ») ; « evidence » donne les valeurs ou les heures.',
     actions: 'vérifications ou réglages (limite mémoire, redémarrage, lecture des logs à telle heure), dans l\'ordre.',
   },
+  'analysis-blockers': {
+    role: 'On te donne les constats de l\'analyse d\'un fichier Compose par la plateforme (erreurs, avertissements, ports, volumes, réseaux et domaines refusés) : tu expliques pourquoi chaque blocage existe et comment le lever.',
+    rules: [
+      'Appuie-toi uniquement sur les constats donnés : le motif de chaque refus est dans son texte. N\'invente aucune règle de la plateforme, aucun port ni domaine autorisé.',
+      'Traite d\'abord les erreurs (elles empêchent le déploiement), puis les avertissements. Regroupe les constats qui ont la même cause.',
+      'Pour chaque correction, dis quoi changer dans le fichier Compose (service, clé : ports, volumes, networks, image…) et, quand la plateforme le permet, le réglage de la cible à utiliser à la place (exposition par le reverse proxy, validation de port, image de remplacement).',
+      'Tu ne vois pas le contenu du Compose : ne cite aucune valeur absente des constats et ne réécris pas le fichier.',
+    ],
+    causes: 'un blocage par entrée (le plus bloquant d\'abord) ; « title » le nomme (service et code), « evidence » donne le motif de la plateforme.',
+    actions: 'corrections dans l\'ordre, chacune précise : service, clé du Compose à modifier, valeur attendue ou réglage de la cible.',
+  },
   proxy: {
     role: 'On te donne la carte des reverse proxies d\'un hôte (proxies, routes, certificats, erreurs ACME, ports publiés hors proxy) : tu expliques ce qui est servi et ce qui ne va pas.',
     rules: [

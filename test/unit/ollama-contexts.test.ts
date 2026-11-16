@@ -3,7 +3,8 @@
  * un déploiement en échec, un rapport tech support, un historique de ressources et des proxies.
  */
 import { describe, expect, it } from 'vitest'
-import { deploymentParts, diagnosticLines, metricsParts, proxyParts, seriesStats, supportParts, supportWeight } from '../../server/lib/ollama/contexts'
+import { analysisExplainInput } from '../../shared/schemas/ollama'
+import { analysisParts, deploymentParts, diagnosticLines, metricsParts, proxyParts, seriesStats, supportParts, supportWeight } from '../../server/lib/ollama/contexts'
 import type { DeploymentDetailDto } from '../../shared/schemas/deployments'
 import type { TargetDiagnostic } from '../../shared/schemas/diagnostic'
 import type { MetricPoint, MetricsDto } from '../../shared/schemas/metrics'
@@ -176,5 +177,54 @@ describe('reverse proxies', () => {
 
   it('ne rend que des sections nommées, les vides étant ignorées plus tard par le tassement', () => {
     expect(proxyParts(map).map(p => p.title)).toContain('Routes')
+  })
+})
+
+describe('blocages de l\'analyse Compose', () => {
+  const raw = {
+    ok: false,
+    issues: [
+      { severity: 'info', code: 'service.excluded', service: 'cache', message: 'Service exclu' },
+      { severity: 'error', code: 'port.forbidden', service: 'db', message: 'Le port 5432 ne peut pas être publié' },
+      { severity: 'warning', code: 'image.latest', service: 'web', message: 'Image sans version', image: 'nginx' },
+    ],
+    ports: [
+      { service: 'db', entry: '5432:5432', published: 5432, protocol: 'tcp', policy: 'forbidden', accepted: false, reason: 'Port réservé aux bases de données' },
+      { service: 'web', entry: '8080:80', published: 8080, protocol: 'tcp', policy: 'allowed', accepted: true, reason: 'Plage autorisée' },
+    ],
+    mounts: [{ service: 'web', type: 'bind', source: '/etc', target: '/host-etc', readOnly: false, accepted: false, reason: 'Hors liste blanche des volumes' }],
+    networks: [{ name: 'host', external: true, status: 'refused', reason: 'Réseau non autorisé' }],
+    exposures: [{ service: 'web', host: 'app.interdit.test', port: 80, router: 'web@docker', accepted: false, reason: 'Domaine hors des domaines autorisés' }],
+    // Champs qui ne doivent JAMAIS atteindre le modèle :
+    sourceYaml: 'services:\n  db:\n    environment:\n      POSTGRES_PASSWORD: sup3r-s3cret',
+    finalYaml: 'password: sup3r-s3cret',
+    variables: [{ name: 'DB_PASSWORD', value: 'sup3r-s3cret' }],
+  }
+
+  it('ne garde que la liste blanche : ni Compose source ou final, ni variables', () => {
+    const parsed = analysisExplainInput.parse(raw)
+    expect(Object.keys(parsed).sort()).toEqual(['exposures', 'issues', 'mounts', 'networks', 'ok', 'ports'])
+    const sent = text(analysisParts(parsed))
+    expect(sent).not.toContain('sup3r-s3cret')
+    expect(sent).not.toContain('POSTGRES_PASSWORD')
+    expect(sent).not.toContain('DB_PASSWORD')
+  })
+
+  it('range les erreurs avant les avertissements et ne détaille que ce qui est refusé', () => {
+    const parts = analysisParts(analysisExplainInput.parse(raw))
+    const issues = parts.find(p => p.title === 'Constats de l\'analyse')!.lines
+    expect(issues.map(l => l.slice(0, 9))).toEqual(['[error] p', '[warning]', '[info] se'])
+    expect(text(parts)).toContain('Port réservé aux bases de données')
+    expect(text(parts)).not.toContain('Plage autorisée')
+    expect(text(parts)).toContain('Hors liste blanche des volumes')
+    expect(text(parts)).toContain('Réseau non autorisé')
+    expect(text(parts)).toContain('Domaine hors des domaines autorisés')
+    expect(parts[0]!.lines[0]).toBe('Compose non conforme : 1 erreur(s), 1 avertissement(s)')
+  })
+
+  it('refuse des champs hors bornes', () => {
+    expect(analysisExplainInput.safeParse({ ...raw, issues: [{ severity: 'error', code: 'x', message: 'm'.repeat(601) }] }).success).toBe(false)
+    expect(analysisExplainInput.safeParse({ ...raw, ports: [{ ...raw.ports[0], published: 70_000 }] }).success).toBe(false)
+    expect(analysisExplainInput.safeParse({ ...raw, issues: Array.from({ length: 151 }, () => raw.issues[0]) }).success).toBe(false)
   })
 })

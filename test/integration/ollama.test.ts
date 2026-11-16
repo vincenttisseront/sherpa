@@ -236,6 +236,34 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
     await svc.saveOllamaSettings({ ...base }, null)
   })
 
+  it('registre : ne sert que les fonctions déclarées et valide strictement le corps', async () => {
+    const { assistFor } = await import('../../server/services/ai-registry')
+    expect(() => assistFor('digest')).toThrowError(expect.objectContaining({ statusCode: 404 }))
+    const blockers = assistFor('analysis-blockers')
+    expect(blockers.permission).toBe('deployment:execute')
+    const stripped = blockers.input.parse({ targetId: '0b2a3c4d-1111-4222-8333-444455556666', ok: false, issues: [], sourceYaml: 'password: x' })
+    expect(stripped).not.toHaveProperty('sourceYaml')
+    expect(assistFor('metrics').input.safeParse({ endpointId: '0b2a3c4d-1111-4222-8333-444455556666', containerId: 'pas-un-id', range: '1h' }).success).toBe(false)
+    expect(assistFor('logs').input.safeParse({ source: 'deployment', deploymentId: 'x' }).success).toBe(false)
+  })
+
+  it('blocages Compose : seuls les constats partent vers le modèle, masqués', async () => {
+    const { explainAnalysisBlockers } = await import('../../server/services/ai-assist')
+    const { analysisExplainInput } = await import('../../shared/schemas/ollama')
+    const input = analysisExplainInput.parse({
+      ok: false,
+      issues: [{ severity: 'error', code: 'port.forbidden', service: 'db', message: 'Port 5432 interdit (password=hunter2hunter2)' }],
+      sourceYaml: 'services: { db: { environment: { PASSWORD: tres-secret-compose } } }',
+    })
+    const r = await explainAnalysisBlockers(input, { stack: 'billing-prod' })
+    const sent = lastPrompt()
+    expect(sent).toContain('port.forbidden')
+    expect(sent).toContain('billing-prod')
+    expect(sent).not.toContain('hunter2hunter2')
+    expect(sent).not.toContain('tres-secret-compose')
+    expect(r.meta.model).toBe('llama3.1:8b')
+  })
+
   it('supprime le jeton à la demande', async () => {
     const { settings, credentialChanged } = await svc.saveOllamaSettings({ ...base, clearToken: true }, null)
     expect(settings.hasToken).toBe(false)

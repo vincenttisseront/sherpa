@@ -67,18 +67,19 @@ const RULES: [string, RegExp, string][] = [
   ['GET', /^\/api\/admin\/readiness$/, 'Vérification des prérequis de mise en service'],
   ['POST', /^\/api\/onboarding\/github-check$/, 'Test de la connexion à GitHub'],
   ['POST', /^\/api\/admin\/ollama\/test$/, 'Test de la connexion à Ollama'],
-  ['POST', /^\/api\/deployments\/[^/]+\/logs\/analyze$/, 'Analyse des logs du déploiement par Ollama'],
-  ['POST', /^\/api\/endpoints\/[^/]+\/containers\/[^/]+\/logs\/analyze$/, 'Analyse des logs du conteneur par Ollama'],
-  ['POST', /^\/api\/deployments\/[^/]+\/diagnose$/, 'Diagnostic de l\'échec par Ollama'],
-  ['POST', /^\/api\/targets\/[^/]+\/tech-support\/summary$/, 'Synthèse du rapport tech support par Ollama'],
-  ['POST', /^\/api\/endpoints\/[^/]+\/containers\/[^/]+\/metrics\/analyze$/, 'Lecture de l\'historique des ressources par Ollama'],
-  ['POST', /^\/api\/endpoints\/[^/]+\/proxy-map\/explain$/, 'Explication des reverse proxies par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/logs$/, 'Analyse des logs par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/deploy-failure$/, 'Diagnostic de l\'échec par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/support$/, 'Synthèse du rapport tech support par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/metrics$/, 'Lecture de l\'historique des ressources par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/proxy$/, 'Explication des reverse proxies par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/analysis-blockers$/, 'Explication des blocages du Compose par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/[a-z-]+$/, 'Assistance par Ollama'],
   ['POST', /^\/api\/auth\/setup$/, 'Création du compte administrateur'],
   ['POST', /^\/api\/auth\/invitations\//, 'Activation du compte'],
   ['POST', /^\/api\/account\/password$/, 'Changement du mot de passe'],
 ]
 /** Requêtes jamais suivies (instantanées, flux, ou propres au suivi). */
-const IGNORED = /^\/api\/(progress|health|live|auth\/me|auth\/login|auth\/logout|saved-views|deployments\/[^/]+\/logs(?!\/analyze))/
+const IGNORED = /^\/api\/(progress|health|live|auth\/me|auth\/login|auth\/logout|saved-views|deployments\/[^/]+\/logs)/
 
 export function activityLabel(method: string, path: string): string | null {
   if (IGNORED.test(path)) return null

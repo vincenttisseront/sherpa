@@ -547,7 +547,7 @@ async function deploy() {
         <div><UiButton size="sm" variant="primary" :loading="extendingGrace" @click="extendGrace">Allonger le délai de démarrage à {{ FIRST_START_SEC / 60 }} min</UiButton></div>
         <p class="muted small">Le healthcheck tourne toujours à son intervalle : le service est déclaré sain dès qu'il répond, seul le délai avant échec s'allonge. Réglage de la cible, modifiable dans Réglages › Healthchecks.</p>
       </div>
-      <AnalysisReport v-if="analysis" v-model:approvals="approvals" :analysis="analysis" :busy-source="busySource" :proxy="exposureInfo ? exposureInfo.traefik : undefined" :busy-port="busyPort" @use-image="useImage" @exclude-service="excludeService" @suspend-service="suspendService" @unpublish-port="setUnpublished" />
+      <AnalysisReport v-if="analysis" v-model:approvals="approvals" :analysis="analysis" :target-id="targetId" :busy-source="busySource" :proxy="exposureInfo ? exposureInfo.traefik : undefined" :busy-port="busyPort" @use-image="useImage" @exclude-service="excludeService" @suspend-service="suspendService" @unpublish-port="setUnpublished" />
     </section>
 
     <section v-if="gate && (gate.requireApproval || gate.windows.length)" class="gate card" data-testid="deploy-gate">

@@ -125,7 +125,7 @@ const tabs = computed(() => [
           <span v-if="d.acknowledged" class="ack-note small">acquitté{{ d.acknowledged.by ? ` par ${d.acknowledged.by}` : '' }} le {{ fmt(d.acknowledged.at) }}</span>
         </span>
       </template>
-      <AiReport v-if="canDiagnose" feature="deploy-failure" :url="`/api/deployments/${d.id}/diagnose`" label="Diagnostiquer avec Ollama" title="Diagnostic de l'échec" causesLabel="Causes probables" actionsLabel="Pour corriger" />
+      <AiReport v-if="canDiagnose" feature="deploy-failure" :body="{ deploymentId: d.id }" label="Diagnostiquer avec Ollama" title="Diagnostic de l'échec" causesLabel="Causes probables" actionsLabel="Pour corriger" />
       <UiButton v-if="canRelaunch" size="sm" title="Relance avec la même release (Compose, source, ports approuvés)" @click="openRelaunch">Relancer…</UiButton>
       <template v-if="canAck">
         <UiButton v-if="!d.acknowledged" size="sm" :loading="acking" title="Retire cet échec du tableau de bord ; il reste dans l'historique" @click="setAcknowledged(true)">Acquitter l'échec</UiButton>
