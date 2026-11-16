@@ -157,6 +157,7 @@ const STATE_TONE = { open: 'info', closed: 'neutral', merged: 'success', resolve
           <label class="small"><input v-model="includeContext" type="checkbox"> Inclure le contexte interne (serveur, projets, lien vers la console)</label>
           <span class="muted small">{{ draft.packages }} paquet(s), {{ draft.vulnerabilities }} vulnérabilité(s)</span>
           <UiButton v-if="loading" size="sm" variant="ghost" loading>…</UiButton>
+          <AiReport feature="vulnerabilities" :body="{ subject, minSeverity, fixableOnly, lang, includeContext }" label="Trier avec Ollama" title="Tri des vulnérabilités" causesLabel="Priorités" actionsLabel="Ordre de traitement" draftLabel="Texte d'issue proposé" />
         </div>
         <p v-if="draft.visibility === 'public'" class="warn small"><TriangleAlert :size="13" /> Dépôt public : la demande sera visible de tous{{ includeContext ? ', contexte interne compris' : '' }}. Pour un signalement privé, préférer un avis de sécurité du dépôt.</p>
         <p v-if="draft.repositoryError" class="warn small"><TriangleAlert :size="13" /> {{ draft.repositoryError }}</p>

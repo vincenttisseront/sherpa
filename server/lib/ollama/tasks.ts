@@ -56,6 +56,29 @@ export const TASKS: Partial<Record<OllamaFeature, TaskSpec>> = {
     causes: 'un blocage par entrée (le plus bloquant d\'abord) ; « title » le nomme (service et code), « evidence » donne le motif de la plateforme.',
     actions: 'corrections dans l\'ordre, chacune précise : service, clé du Compose à modifier, valeur attendue ou réglage de la cible.',
   },
+  vulnerabilities: {
+    role: 'On te donne le résultat d\'une analyse de vulnérabilités (Trivy) d\'une image ou des dépendances d\'un code source, regroupé par paquet avec la version corrigée minimale : tu fais le tri et tu prépares le texte d\'une demande de correction.',
+    rules: [
+      'Ne cite que les CVE, paquets et versions des données. N\'invente aucune version corrigée, aucun score CVSS, aucun détail d\'exploitation. Sans correctif publié, dis-le et propose de surveiller ou d\'accepter le risque, pas une version.',
+      'Ordre de traitement : sévérité, puis présence d\'un correctif. Regroupe par geste : reconstruire l\'image sur une base à jour règle d\'un coup les paquets système ; les dépendances applicatives se corrigent une par une dans leur fichier de dépendances.',
+      'Distingue ce qui est urgent (critique ou haute avec correctif) de ce qui peut attendre. Si la sélection envoyée est partielle (« … non listés », sévérité minimale), dis que le tri n\'est pas complet.',
+      'Tu ne sais pas si la vulnérabilité est atteignable depuis l\'extérieur : ne l\'affirme pas.',
+    ],
+    causes: 'priorités, la plus urgente d\'abord ; « title » nomme le paquet (ou le groupe de paquets), « evidence » donne ses CVE, sa version installée et la version corrigée.',
+    actions: 'gestes dans l\'ordre (reconstruire l\'image, mettre à jour tel fichier de dépendances, surveiller telle vulnérabilité sans correctif), chacun avec le paquet et la version cible issus des données.',
+    draft: 'texte d\'issue prêt à coller : première ligne « Titre : … », puis un corps en Markdown (contexte, liste des paquets à mettre à jour avec version actuelle et version corrigée, ordre de traitement, comment vérifier). Sans secret ; sans nom de projet, de serveur ni lien interne, sauf s\'ils figurent dans les données.',
+  },
+  'release-notes': {
+    role: 'On te donne les notes des releases publiées entre la version en service d\'une image et la version vers laquelle on veut la mettre à niveau : tu dis ce qui change pour l\'administrateur et ce qu\'il doit vérifier avant de mettre à niveau.',
+    rules: [
+      'Ne rapporte que ce que disent les notes. Si elles sont vides, trop courtes ou ne parlent pas d\'un sujet, dis-le : n\'invente aucun changement, aucune variable ni aucune commande.',
+      'Cherche d\'abord ce qui peut casser : changement incompatible (« breaking », « removed », « deprecated »), migration de base de données ou de données, variable d\'environnement ou option renommée, port ou chemin modifié, version minimale requise d\'un autre composant, changement de format de configuration.',
+      'Indique la release d\'où vient chaque point. Si plusieurs versions sont sautées, dis qu\'il faut aussi lire les intermédiaires.',
+      'Un service à données demande une sauvegarde avant la mise à niveau, surtout si une migration est annoncée. severity : error si une action est obligatoire avant la mise à niveau, warning si des changements notables sont à connaître, ok sinon.',
+    ],
+    causes: 'changements notables, les plus risqués d\'abord ; « title » les nomme, « evidence » cite la release et la phrase des notes (courte).',
+    actions: 'liste à faire avant, pendant et après la mise à niveau, dans l\'ordre (sauvegarde, variable à modifier, point à vérifier ensuite).',
+  },
   proxy: {
     role: 'On te donne la carte des reverse proxies d\'un hôte (proxies, routes, certificats, erreurs ACME, ports publiés hors proxy) : tu expliques ce qui est servi et ce qui ne va pas.',
     rules: [

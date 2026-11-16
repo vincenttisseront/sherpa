@@ -242,6 +242,12 @@ export function createGithubClient(opts: GithubClientOptions) {
       return r.filter(x => !x.draft).map(toRelease)
     },
 
+    /** Releases publiées (hors brouillons) avec leurs notes, les plus récentes d'abord ; notes bornées à 20 000 caractères. */
+    async releaseNotes(src: GithubSource, limit = 100): Promise<GithubReleaseNotes[]> {
+      const r = await json<RawRelease[]>(src, `${repo(src)}/releases?per_page=${Math.min(100, Math.max(1, limit))}`)
+      return r.filter(x => !x.draft).map(x => ({ tag: x.tag_name, name: x.name, prerelease: x.prerelease, publishedAt: x.published_at, htmlUrl: x.html_url, body: (x.body ?? '').slice(0, 20_000) }))
+    },
+
     /** Release d'un tag, ou la dernière release stable (tag null). */
     async release(src: GithubSource, tag: string | null): Promise<GithubRelease> {
       if (tag !== null && !REF_RE.test(tag)) throw new GithubError('Nom de tag invalide', null, 'invalid')
@@ -421,6 +427,7 @@ interface RawRelease {
   prerelease: boolean
   published_at: string | null
   html_url: string
+  body?: string | null
   assets: { id: number, name: string, size: number, content_type: string }[]
 }
 
@@ -454,6 +461,9 @@ function toRelease(r: RawRelease): GithubRelease {
     assets: (r.assets ?? []).map(a => ({ id: a.id, name: a.name, size: a.size, contentType: a.content_type })),
   }
 }
+
+/** Release avec son texte (notes de version), pour la lecture avant une mise à niveau. */
+export interface GithubReleaseNotes { tag: string, name: string | null, prerelease: boolean, publishedAt: string | null, htmlUrl: string, body: string }
 
 export type GithubClient = ReturnType<typeof createGithubClient>
 

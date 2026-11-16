@@ -137,7 +137,7 @@ async function resolveSubject(subject: RemediationSubject): Promise<ResolvedSubj
 }
 
 /** Jeton pour ce dépôt : saisi pour la demande, connecteur GitHub du compte, ou source GitHub d'un projet. */
-async function credentialsFor(apiUrl: string, repository: string, oneTime?: string | null): Promise<{ token: string | null, label: string | null }> {
+export async function credentialsFor(apiUrl: string, repository: string, oneTime?: string | null): Promise<{ token: string | null, label: string | null }> {
   if (oneTime) return { token: oneTime, label: 'jeton saisi pour cette demande' }
   const owner = repository.split('/')[0]!.toLowerCase()
   const decrypt = async (secretId: string) => {

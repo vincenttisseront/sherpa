@@ -10,7 +10,10 @@ import type { AiReportDto, AnalysisExplainInput } from '../../shared/schemas/oll
 import { METRIC_RANGES, type MetricRange } from '../../shared/schemas/metrics'
 import { portainer } from '../adapters/portainer'
 import { db, schema } from '../db/client'
-import { analysisParts, deploymentParts, metricsParts, proxyParts, supportParts } from '../lib/ollama/contexts'
+import { analysisParts, deploymentParts, metricsParts, proxyParts, supportParts, vulnerabilityParts } from '../lib/ollama/contexts'
+import { groupFindings } from '../lib/remediation'
+import type { RemediationSubject } from '../../shared/schemas/remediation'
+import type { Finding, Severity, SeverityCounts } from '../../shared/schemas/trivy'
 import { noProgress, type Progress } from '../utils/progress'
 import { runAiReport } from './ai-task'
 import { diagnoseTarget } from './diagnostic'
@@ -22,6 +25,7 @@ import { getTargetOr404, type TargetRow } from './projects'
 import { endpointProxyMap } from './proxy-map'
 import { connectionFor } from './servers'
 import { techSupportReport } from './tech-support'
+import { imageScanDetail, sourceScanDetail } from './trivy'
 
 /** Lecture facultative : un hôte injoignable ne doit pas empêcher d'analyser ce qu'on a déjà. */
 async function within<T>(ms: number, task: Promise<T>): Promise<T | null> {
@@ -122,5 +126,51 @@ export async function explainAnalysisBlockers(input: AnalysisExplainInput, ctx: 
     header: [ctx.stack ? `Analyse du Compose de la stack ${ctx.stack}` : 'Analyse d\'un fichier Compose'],
     parts: analysisParts(input),
     focus: input.focus,
+  })
+}
+
+/** Résultat d'analyse Trivy lu pour le tri : image ou code source, avec l'endpoint pour les droits. */
+export interface VulnerabilityScan {
+  id: string
+  type: 'image' | 'source'
+  endpointId: string
+  name: string
+  os: string | null
+  scannedAt: string
+  counts: SeverityCounts
+  fixable: number
+  findings: Finding[]
+  usedBy: { label: string, services: string[] }[]
+}
+
+export async function loadVulnerabilityScan(subject: RemediationSubject): Promise<VulnerabilityScan> {
+  if (subject.type === 'image') {
+    const s = await imageScanDetail(subject.id)
+    if (!s) throw createError({ statusCode: 404, statusMessage: 'Analyse introuvable' })
+    return { id: s.id, type: 'image', endpointId: s.endpointId, name: s.image, os: s.os, scannedAt: s.scannedAt, counts: s.counts, fixable: s.fixable, findings: s.findings, usedBy: s.targets.map(t => ({ label: t.label, services: t.services })) }
+  }
+  const s = await sourceScanDetail(subject.id)
+  if (!s) throw createError({ statusCode: 404, statusMessage: 'Analyse introuvable' })
+  const name = s.repository ? `${s.repository}${s.ref ? `@${s.ref}` : ''}` : 'archive déposée'
+  return { id: s.id, type: 'source', endpointId: s.endpointId, name, os: null, scannedAt: s.scannedAt, counts: s.counts, fixable: s.fixable, findings: s.findings, usedBy: [{ label: s.label, services: [] }] }
+}
+
+/** Tri des vulnérabilités d'une analyse Trivy et texte de demande de correction (issue ou PR). */
+export async function triageVulnerabilities(scan: VulnerabilityScan, opts: { minSeverity: Exclude<Severity, 'UNKNOWN'>, fixableOnly: boolean, lang: 'fr' | 'en', includeContext: boolean, focus?: string, progress?: Progress }): Promise<AiReportDto> {
+  const progress = opts.progress ?? noProgress
+  await progress.step('Regroupement des vulnérabilités par paquet', 1, 2)
+  const groups = groupFindings(scan.findings, { minSeverity: opts.minSeverity, fixableOnly: opts.fixableOnly })
+  if (!groups.length) throw createError({ statusCode: 422, statusMessage: 'Aucune vulnérabilité à trier avec ces critères' })
+  await progress.step('Analyse par le modèle Ollama (peut prendre une minute)', 2, 2)
+  return runAiReport({
+    feature: 'vulnerabilities',
+    header: [opts.lang === 'en' ? 'Rédige le champ « draft » en anglais.' : 'Rédige le champ « draft » en français.'],
+    parts: vulnerabilityParts({
+      type: scan.type, name: scan.name, os: scan.os, scannedAt: scan.scannedAt, counts: scan.counts, fixable: scan.fixable, groups,
+      selection: { minSeverity: opts.minSeverity, fixableOnly: opts.fixableOnly },
+      usedBy: opts.includeContext ? scan.usedBy : [],
+    }),
+    focus: opts.focus,
+    withDraft: true,
   })
 }

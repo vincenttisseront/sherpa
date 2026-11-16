@@ -8,6 +8,8 @@ import type { AnalysisExplainInput } from '../../../shared/schemas/ollama'
 import type { TargetDiagnostic } from '../../../shared/schemas/diagnostic'
 import type { ActiveAlertDto, MetricPoint, MetricsDto } from '../../../shared/schemas/metrics'
 import type { ProxyMapDto } from '../../../shared/schemas/proxy-map'
+import { SEVERITIES, type SeverityCounts } from '../../../shared/schemas/trivy'
+import type { RemediationGroup } from '../remediation'
 import { splitReportSections, type ContextPart } from './context'
 
 const stamp = (iso: string): string => `${iso.slice(0, 16)}Z`
@@ -178,5 +180,46 @@ export function analysisParts(a: AnalysisExplainInput): ContextPart[] {
     { title: 'Volumes refusés', lines: refusedMounts.map(m => `service ${m.service} : ${m.type} ${m.source ?? '(anonyme)'} → ${m.target}${m.readOnly ? ' (lecture seule)' : ''} : ${m.reason}`), weight: 2 },
     { title: 'Réseaux refusés', lines: refusedNets.map(n => `${n.name}${n.external ? ' (externe)' : ''} : ${n.reason}`), weight: 1 },
     { title: 'Expositions refusées', lines: refusedExpo.map(e => `service ${e.service} : ${e.host}:${e.port} (${e.router}) : ${e.reason}`), weight: 2 },
+  ]
+}
+
+// --- Vulnérabilités (Trivy) -------------------------------------------------------------------
+
+export interface VulnerabilityContext {
+  type: 'image' | 'source'
+  /** Image, ou dépôt et référence du code source. */
+  name: string
+  os: string | null
+  scannedAt: string
+  counts: SeverityCounts
+  fixable: number
+  /** Paquets regroupés (version corrigée minimale par paquet), déjà filtrés par sévérité. */
+  groups: readonly RemediationGroup[]
+  selection: { minSeverity: string, fixableOnly: boolean }
+  /** Projets et services qui utilisent l'image : seulement si l'utilisateur a choisi d'inclure le contexte interne. */
+  usedBy: readonly { label: string, services: readonly string[] }[]
+}
+
+const MAX_GROUPS = 120
+const MAX_VULNS_PER_GROUP = 6
+
+export function vulnerabilityParts(v: VulnerabilityContext): ContextPart[] {
+  const counts = SEVERITIES.map(s => `${s} ${v.counts[s] ?? 0}`).join(', ')
+  const head = [
+    `${v.type === 'image' ? 'Image' : 'Dépendances du code source'} : ${v.name}${v.os ? ` · système ${v.os}` : ''}`,
+    `Analyse du ${stamp(v.scannedAt)} · vulnérabilités : ${counts} · avec correctif publié : ${v.fixable}`,
+    `Sélection envoyée : sévérité ${v.selection.minSeverity} et plus${v.selection.fixableOnly ? ', correctif publié uniquement' : ''} · ${v.groups.length} paquet(s)`,
+  ]
+  const shown = v.groups.slice(0, MAX_GROUPS)
+  const packages = shown.map((g) => {
+    const ids = g.vulns.slice(0, MAX_VULNS_PER_GROUP).map(x => `${x.id} (${x.severity})`).join(', ')
+    const more = g.vulns.length > MAX_VULNS_PER_GROUP ? ` … +${g.vulns.length - MAX_VULNS_PER_GROUP}` : ''
+    return `${g.pkg} ${g.installed} → ${g.fixed ?? 'aucun correctif publié'} · ${g.kind === 'os' ? 'paquet système' : 'dépendance applicative'} · sévérité max ${g.severity} · ${g.vulns.length} vulnérabilité(s) : ${ids}${more} · ${g.files.slice(0, 3).join(', ')}`
+  })
+  if (v.groups.length > shown.length) packages.push(`[… ${v.groups.length - shown.length} paquet(s) moins graves non listés …]`)
+  return [
+    { title: 'Analyse', lines: head, weight: 1 },
+    { title: 'Paquets concernés (du plus grave au moins grave)', lines: packages, weight: 4 },
+    ...(v.usedBy.length ? [{ title: 'Utilisé par', lines: v.usedBy.map(u => `${u.label}${u.services.length ? ` (services ${u.services.join(', ')})` : ''}`), weight: 1 }] : []),
   ]
 }

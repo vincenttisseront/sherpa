@@ -27,7 +27,7 @@ export interface MockRepo {
   /** Dépôt privé : accessible seulement avec un token qui y donne accès. */
   private?: boolean
   /** Releases publiées (la plus récente d'abord), chacune avec le contenu du dépôt à son tag. */
-  releases?: { tag: string, name?: string, prerelease?: boolean, files: Record<string, string> }[]
+  releases?: { tag: string, name?: string, prerelease?: boolean, files: Record<string, string>, /** Notes de la release (Markdown). */ body?: string }[]
   /** Artefacts des workflows Actions. */
   artifacts?: { id: number, name: string, sizeBytes: number, expired: boolean, createdAt: string, expiresAt: string, branch?: string }[]
   /** Écritures reçues (demandes de correction) : issues, PR, branches et leurs fichiers. */
@@ -130,7 +130,7 @@ export function createMockGithub(repos: Record<string, MockRepo>, opts: MockOpti
     const sha = commitOf(repo)
     // Contenus connus : branche (dernier commit) et releases (commit de leur tag).
     const versions = new Map<string, Record<string, string>>([[sha, repo.files], ...(repo.releases ?? []).map(r => [commitOf({ files: r.files }), r.files] as const)])
-    const release = (r: NonNullable<MockRepo['releases']>[number]) => ({ tag_name: r.tag, name: r.name ?? r.tag, prerelease: !!r.prerelease, draft: false, published_at: '2026-10-01T00:00:00Z', html_url: `https://github.example/${name}/releases/tag/${r.tag}`, assets: [] })
+    const release = (r: NonNullable<MockRepo['releases']>[number]) => ({ tag_name: r.tag, name: r.name ?? r.tag, prerelease: !!r.prerelease, draft: false, published_at: '2026-10-01T00:00:00Z', html_url: `https://github.example/${name}/releases/tag/${r.tag}`, body: r.body ?? null, assets: [] })
     if (repo.private && !isDownload && !opts.token) {
       // Comme GitHub : un dépôt privé inaccessible est « introuvable ».
       if (!tok || (tok.repos && !tok.repos.includes(name))) return json(res, 404, { message: 'Not Found' })

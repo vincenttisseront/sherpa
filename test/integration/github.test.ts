@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createGithubClient, downloadHostsFor, parseGitmodules } from '../../server/lib/github'
 import { commitOf, createMockGithub } from '../../scripts/mock-github'
 
-const repo = { files: { 'app/compose.yml': 'services: {}\n', 'app/Dockerfile': 'FROM scratch\n', '.gitmodules': '[submodule "libs/ui"]\n\tpath = libs/ui\n\turl = https://github.com/acme/ui.git\n' }, branch: 'main', tag: 'v1.0.0', submodules: { 'libs/ui': { repository: 'acme/ui' } } }
+const repo = { releases: [{ tag: 'v1.2.0', files: { a: '2' }, body: '## Changements\n- **Breaking** : variable `OLD_URL` renommée en `APP_URL`\n<!-- note interne -->' }, { tag: 'v1.1.0', prerelease: true, files: { a: '1' } }], files: { 'app/compose.yml': 'services: {}\n', 'app/Dockerfile': 'FROM scratch\n', '.gitmodules': '[submodule "libs/ui"]\n\tpath = libs/ui\n\turl = https://github.com/acme/ui.git\n' }, branch: 'main', tag: 'v1.0.0', submodules: { 'libs/ui': { repository: 'acme/ui' } } }
 const ui = { files: { 'index.js': 'export {}' } }
 let server: Server
 let api: string
@@ -19,6 +19,20 @@ afterAll(() => server?.close())
 
 const client = () => createGithubClient({ allowedApiUrls: [api], allowHttp: true })
 const src = () => ({ apiUrl: api, repository: 'acme/shop', token })
+
+describe('client GitHub : notes de version', () => {
+  it('liste les releases avec leur texte, brouillons exclus', async () => {
+    const notes = await client().releaseNotes(src(), 10)
+    expect(notes.map(n => n.tag)).toEqual(['v1.2.0', 'v1.1.0'])
+    expect(notes[0]!.body).toContain('OLD_URL')
+    expect(notes[1]!.prerelease).toBe(true)
+    expect(notes[1]!.body).toBe('')
+  })
+
+  it('refuse un dépôt hors liste d\'API autorisées', async () => {
+    await expect(createGithubClient({ allowedApiUrls: ['https://api.github.com'], allowHttp: true }).releaseNotes(src())).rejects.toMatchObject({ kind: 'forbidden_host' })
+  })
+})
 
 describe('client GitHub', () => {
   it('résout branche, tag annoté et SHA court vers le même commit complet', async () => {

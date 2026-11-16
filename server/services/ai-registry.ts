@@ -11,12 +11,14 @@ import { z } from 'zod'
 import { createError } from 'h3'
 import { type AiReportDto, analysisExplainInput, type OllamaFeature, logAnalysisFocus } from '../../shared/schemas/ollama'
 import { METRIC_RANGES } from '../../shared/schemas/metrics'
+import { remediationSubject } from '../../shared/schemas/remediation'
 import type { Permission, PermissionScope } from '../../shared/utils/permissions'
 import { portainer } from '../adapters/portainer'
 import { schema } from '../db/client'
 import { type AuthUser, canOn } from '../utils/auth'
 import type { Progress } from '../utils/progress'
-import { analyzeContainerMetrics, diagnoseDeploymentFailure, explainAnalysisBlockers, explainProxies, summarizeTechSupport } from './ai-assist'
+import { analyzeContainerMetrics, diagnoseDeploymentFailure, explainAnalysisBlockers, explainProxies, loadVulnerabilityScan, summarizeTechSupport, triageVulnerabilities } from './ai-assist'
+import { explainReleaseNotes } from './ai-release-notes'
 import { deploymentScope } from './deployments'
 import { liveEndpoints } from './live'
 import { analyzeLogsWithOllama, deploymentLogLines, deploymentSource } from './log-analysis'
@@ -63,6 +65,15 @@ const logsInput = z.discriminatedUnion('source', [
   }),
   z.object({ source: z.literal('container'), endpointId: z.uuid(), containerId, tail: z.number().int().min(10).max(2000).default(300), focus: logAnalysisFocus }),
 ])
+
+const vulnerabilitiesInput = z.object({
+  subject: remediationSubject,
+  minSeverity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).default('HIGH'),
+  fixableOnly: z.boolean().default(false),
+  lang: z.enum(['fr', 'en']).default('fr'),
+  includeContext: z.boolean().default(false),
+  focus: logAnalysisFocus,
+})
 
 const ASSISTS: Partial<Record<OllamaFeature, AssistSpec>> = {
   logs: define({
@@ -133,6 +144,34 @@ const ASSISTS: Partial<Record<OllamaFeature, AssistSpec>> = {
     resolve: async ({ endpointId, focus }, user) => {
       const row = await endpointOf(user, endpointId)
       return { scope: { serverId: row.server.id }, audit: { targetType: 'endpoint', targetId: endpointId, serverId: row.server.id }, run: progress => explainProxies(row, { focus, progress }) }
+    },
+  }),
+  vulnerabilities: define({
+    permission: 'server:read',
+    input: vulnerabilitiesInput,
+    resolve: async ({ subject, focus, ...opts }, user) => {
+      const scan = await loadVulnerabilityScan(subject)
+      // Même règle que la lecture d'une analyse : l'endpoint doit être visible de l'utilisateur.
+      const row = await endpointOf(user, scan.endpointId)
+      return {
+        scope: { serverId: row.server.id },
+        audit: { targetType: `${scan.type}_scan`, targetId: scan.id, serverId: row.server.id },
+        run: progress => triageVulnerabilities(scan, { ...opts, focus, progress }),
+      }
+    },
+  }),
+  'release-notes': define({
+    permission: 'project:read',
+    input: z.object({
+      targetId: z.uuid(),
+      service: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/),
+      tag: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/),
+      focus: logAnalysisFocus,
+    }),
+    resolve: async ({ targetId, service, tag, focus }) => {
+      const t = await getTargetOr404(targetId)
+      const scope = targetScope(t)
+      return { scope, audit: { targetType: 'project_target', targetId, ...scope }, run: progress => explainReleaseNotes(t, { service, tag, focus }, progress) }
     },
   }),
   'analysis-blockers': define({

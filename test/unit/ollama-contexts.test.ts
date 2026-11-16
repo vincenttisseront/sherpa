@@ -4,8 +4,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import { analysisExplainInput } from '../../shared/schemas/ollama'
-import { analysisParts, deploymentParts, diagnosticLines, metricsParts, proxyParts, seriesStats, supportParts, supportWeight } from '../../server/lib/ollama/contexts'
+import { analysisParts, deploymentParts, diagnosticLines, metricsParts, proxyParts, seriesStats, supportParts, supportWeight, vulnerabilityParts } from '../../server/lib/ollama/contexts'
 import type { DeploymentDetailDto } from '../../shared/schemas/deployments'
+import { groupFindings } from '../../server/lib/remediation'
+import type { Finding } from '../../shared/schemas/trivy'
 import type { TargetDiagnostic } from '../../shared/schemas/diagnostic'
 import type { MetricPoint, MetricsDto } from '../../shared/schemas/metrics'
 import type { ProxyMapDto } from '../../shared/schemas/proxy-map'
@@ -226,5 +228,51 @@ describe('blocages de l\'analyse Compose', () => {
     expect(analysisExplainInput.safeParse({ ...raw, issues: [{ severity: 'error', code: 'x', message: 'm'.repeat(601) }] }).success).toBe(false)
     expect(analysisExplainInput.safeParse({ ...raw, ports: [{ ...raw.ports[0], published: 70_000 }] }).success).toBe(false)
     expect(analysisExplainInput.safeParse({ ...raw, issues: Array.from({ length: 151 }, () => raw.issues[0]) }).success).toBe(false)
+  })
+})
+
+describe('vulnérabilités Trivy', () => {
+  const f = (id: string, pkg: string, installed: string, fixed: string | null, severity: Finding['severity'], target = 'debian 12'): Finding => ({ id, pkg, installed, fixed, severity, title: `titre secret de ${id}`, url: `https://avd.example/${id}`, target, class: 'os-pkgs' })
+  const findings = [
+    f('CVE-2026-0001', 'openssl', '3.0.1', '3.0.9', 'CRITICAL'),
+    f('CVE-2026-0002', 'openssl', '3.0.1', '3.0.12', 'HIGH'),
+    f('CVE-2026-0003', 'zlib', '1.2.1', null, 'HIGH'),
+    f('CVE-2026-0004', 'curl', '8.0.0', '8.1.0', 'LOW'),
+  ]
+  const ctx = (over: Partial<Parameters<typeof vulnerabilityParts>[0]> = {}) => ({
+    type: 'image' as const, name: 'ghcr.io/acme/app:1.4', os: 'debian 12', scannedAt: '2026-11-16T03:00:00.000Z',
+    counts: { CRITICAL: 1, HIGH: 2, MEDIUM: 0, LOW: 1, UNKNOWN: 0 }, fixable: 3,
+    groups: groupFindings(findings, { minSeverity: 'HIGH', fixableOnly: false }),
+    selection: { minSeverity: 'HIGH', fixableOnly: false }, usedBy: [], ...over,
+  })
+
+  it('regroupe par paquet avec la version corrigée minimale la plus haute et signale l\'absence de correctif', () => {
+    const parts = vulnerabilityParts(ctx())
+    const pk = parts.find(p => p.title.startsWith('Paquets'))!
+    expect(pk.weight).toBe(4)
+    expect(pk.lines[0]).toContain('openssl 3.0.1 → 3.0.12 · paquet système · sévérité max CRITICAL · 2 vulnérabilité(s) : CVE-2026-0001 (CRITICAL), CVE-2026-0002 (HIGH)')
+    expect(pk.lines[1]).toContain('zlib 1.2.1 → aucun correctif publié')
+    expect(text(parts)).not.toContain('curl')
+    expect(parts[0]!.lines[1]).toContain('CRITICAL 1, HIGH 2, MEDIUM 0, LOW 1, UNKNOWN 0')
+  })
+
+  it('n\'envoie ni titre de vulnérabilité ni lien, et le contexte interne seulement s\'il est fourni', () => {
+    expect(text(vulnerabilityParts(ctx()))).not.toContain('titre secret')
+    expect(text(vulnerabilityParts(ctx()))).not.toContain('avd.example')
+    expect(vulnerabilityParts(ctx()).map(p => p.title)).not.toContain('Utilisé par')
+    const withCtx = vulnerabilityParts(ctx({ usedBy: [{ label: 'Billing (prod)', services: ['web'] }] }))
+    expect(text(withCtx)).toContain('Billing (prod) (services web)')
+  })
+
+  it('borne le nombre de paquets et de CVE par paquet', () => {
+    const many = Array.from({ length: 200 }, (_, i) => f(`CVE-2026-${1000 + i}`, `pkg${i}`, '1.0.0', '1.0.1', 'HIGH'))
+    const groups = groupFindings(many, { minSeverity: 'HIGH', fixableOnly: false })
+    const lines = vulnerabilityParts(ctx({ groups })).find(p => p.title.startsWith('Paquets'))!.lines
+    expect(lines).toHaveLength(121)
+    expect(lines.at(-1)).toContain('80 paquet(s) moins graves non listés')
+    const same = Array.from({ length: 10 }, (_, i) => f(`CVE-2026-${2000 + i}`, 'big', '1.0.0', '1.0.1', 'HIGH'))
+    const one = vulnerabilityParts(ctx({ groups: groupFindings(same, { minSeverity: 'HIGH', fixableOnly: false }) })).find(p => p.title.startsWith('Paquets'))!.lines[0]!
+    expect(one).toContain('10 vulnérabilité(s)')
+    expect(one).toContain('… +4')
   })
 })

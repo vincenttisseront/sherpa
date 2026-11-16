@@ -73,6 +73,8 @@ const RULES: [string, RegExp, string][] = [
   ['POST', /^\/api\/ollama\/assist\/metrics$/, 'Lecture de l\'historique des ressources par Ollama'],
   ['POST', /^\/api\/ollama\/assist\/proxy$/, 'Explication des reverse proxies par Ollama'],
   ['POST', /^\/api\/ollama\/assist\/analysis-blockers$/, 'Explication des blocages du Compose par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/vulnerabilities$/, 'Tri des vulnérabilités par Ollama'],
+  ['POST', /^\/api\/ollama\/assist\/release-notes$/, 'Lecture des notes de version par Ollama'],
   ['POST', /^\/api\/ollama\/assist\/[a-z-]+$/, 'Assistance par Ollama'],
   ['POST', /^\/api\/auth\/setup$/, 'Création du compte administrateur'],
   ['POST', /^\/api\/auth\/invitations\//, 'Activation du compte'],

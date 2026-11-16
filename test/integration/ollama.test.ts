@@ -264,6 +264,32 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
     expect(r.meta.model).toBe('llama3.1:8b')
   })
 
+  it('tri Trivy : seules les CVE, paquets et versions partent, le contexte interne seulement sur demande', async () => {
+    const { triageVulnerabilities } = await import('../../server/services/ai-assist')
+    const scan = {
+      id: 'x', type: 'image' as const, endpointId: 'e', name: 'ghcr.io/acme/app:1.4', os: 'debian 12', scannedAt: '2026-11-16T03:00:00.000Z',
+      counts: { CRITICAL: 1, HIGH: 0, MEDIUM: 0, LOW: 0, UNKNOWN: 0 }, fixable: 1,
+      findings: [{ id: 'CVE-2026-0001', pkg: 'openssl', installed: '3.0.1', fixed: '3.0.9', severity: 'CRITICAL' as const, title: 'titre-a-ne-pas-envoyer', url: 'https://avd.example/x', target: 'debian 12', class: 'os-pkgs' as const }],
+      usedBy: [{ label: 'Billing (prod)', services: ['web'] }],
+    }
+    mock.reply = JSON.stringify({ severity: 'error', summary: 'Reconstruire l\'image.', causes: [], actions: ['Reconstruire'], draft: 'Titre : mise à jour openssl\n\nVersion 3.0.9' })
+    const r = await triageVulnerabilities(scan, { minSeverity: 'HIGH', fixableOnly: true, lang: 'en', includeContext: false })
+    const sent = lastPrompt()
+    expect(sent).toContain('openssl 3.0.1 → 3.0.9')
+    expect(sent).toContain('CVE-2026-0001')
+    expect(sent).toContain('en anglais')
+    expect(sent).not.toContain('titre-a-ne-pas-envoyer')
+    expect(sent).not.toContain('Billing (prod)')
+    expect(r.draft).toContain('Titre : mise à jour openssl')
+
+    await triageVulnerabilities(scan, { minSeverity: 'HIGH', fixableOnly: true, lang: 'fr', includeContext: true })
+    expect(lastPrompt()).toContain('Billing (prod) (services web)')
+
+    mock.calls.length = 0
+    await expect(triageVulnerabilities({ ...scan, findings: [] }, { minSeverity: 'HIGH', fixableOnly: true, lang: 'fr', includeContext: false })).rejects.toMatchObject({ statusCode: 422 })
+    expect(mock.calls).toHaveLength(0)
+  })
+
   it('supprime le jeton à la demande', async () => {
     const { settings, credentialChanged } = await svc.saveOllamaSettings({ ...base, clearToken: true }, null)
     expect(settings.hasToken).toBe(false)
