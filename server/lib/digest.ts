@@ -23,6 +23,11 @@ export function digestDue(s: DigestSettings, since: Date, now: Date): Date | nul
   return boundary && boundary.getTime() > since.getTime() ? boundary : null
 }
 
+/** Place la synthèse rédigée par le modèle avant le récapitulatif chiffré, en la signalant comme telle. */
+export function withNarrative(summary: string, narrative: string | null): string {
+  return narrative ? `Synthèse automatique (modèle local, à vérifier) :\n${narrative}\n\n${summary}` : summary
+}
+
 export interface DigestEvent { event: string, severity: string, title: string, createdAt: Date }
 const RANK: Record<string, number> = { info: 0, warning: 1, error: 2 }
 

@@ -13,11 +13,12 @@ import { type NotificationMessage, NotificationError, notificationAdapter } from
 import { checkWebhookUrl } from '../adapters/notifications/teams-webhook'
 import { smtpConfigured } from '../adapters/notifications/email'
 import { db, schema } from '../db/client'
-import { composeDigest, digestDue } from '../lib/digest'
+import { composeDigest, digestDue, withNarrative } from '../lib/digest'
 import { notificationQueue } from '../queue/queues'
 import { decryptSecret, encryptSecret } from '../utils/crypto'
 import { env } from '../utils/env'
 import { redactPatterns } from '../utils/redact'
+import { narrateDigest, type NarrativeMemo } from './ai-digest'
 import { periodRange } from '../utils/table'
 
 export interface EmitInput extends Omit<NotificationMessage, 'link'> {
@@ -235,12 +236,15 @@ export async function listDeliveries(q: DeliveryQuery): Promise<Paginated<Delive
 type Channel = typeof schema.notificationChannels.$inferSelect
 
 /** Compose et met en file le résumé d'un canal pour [since, until] ; renvoie le nombre d'évènements résumés (0 : rien envoyé). */
-async function sendDigest(c: Channel, since: Date, until: Date): Promise<number> {
+async function sendDigest(c: Channel, since: Date, until: Date, memo?: NarrativeMemo): Promise<number> {
   const events = (await db().select().from(schema.notificationEvents).where(and(gte(schema.notificationEvents.createdAt, since), lte(schema.notificationEvents.createdAt, until))))
     .filter(e => e.event !== 'digest.summary' && c.events.includes(e.event) && (!e.environmentId || !c.environmentIds.length || c.environmentIds.includes(e.environmentId)))
-  const digest = composeDigest(events, c.digest === 'weekly' ? 'weekly' : 'daily', since, until)
+  const kind = c.digest === 'weekly' ? 'weekly' : 'daily'
+  const digest = composeDigest(events, kind, since, until)
   if (!digest) return 0
-  const [ev] = await db().insert(schema.notificationEvents).values({ event: 'digest.summary', severity: digest.severity, title: digest.title, summary: digest.summary, facts: digest.facts, link: `${env().APP_URL}/admin/notifications` }).returning({ id: schema.notificationEvents.id })
+  // Synthèse facultative par Ollama (jamais bloquante) ; le récapitulatif habituel suit toujours.
+  const narrative = await narrateDigest(events, kind, since, until, memo)
+  const [ev] = await db().insert(schema.notificationEvents).values({ event: 'digest.summary', severity: digest.severity, title: digest.title, summary: withNarrative(digest.summary, narrative), facts: digest.facts, link: `${env().APP_URL}/admin/notifications` }).returning({ id: schema.notificationEvents.id })
   const [d] = await db().insert(schema.notificationDeliveries).values({ eventId: ev!.id, channelId: c.id, channelName: c.name, kind: c.kind }).returning({ id: schema.notificationDeliveries.id })
   await notificationQueue().add('deliver', { deliveryId: d!.id }, { attempts: DELIVERY_ATTEMPTS, backoff: { type: 'exponential', delay: 5_000 } })
   return events.length
@@ -251,13 +255,14 @@ export async function runDigests(now = new Date()): Promise<{ sent: number, empt
   const channels = (await db().select().from(schema.notificationChannels).where(eq(schema.notificationChannels.enabled, true))).filter(c => c.digest !== 'off')
   let sent = 0
   let empty = 0
+  const memo: NarrativeMemo = new Map()
   for (const c of channels) {
     const since = c.lastDigestAt ?? c.createdAt
     const boundary = digestDue(c, since, now)
     if (!boundary) continue
     // L'échéance est consommée d'abord : un incident d'envoi ne produit jamais deux résumés.
     await db().update(schema.notificationChannels).set({ lastDigestAt: boundary }).where(eq(schema.notificationChannels.id, c.id))
-    if (await sendDigest(c, since, boundary)) sent++
+    if (await sendDigest(c, since, boundary, memo)) sent++
     else empty++
   }
   return { sent, empty }

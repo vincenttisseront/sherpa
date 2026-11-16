@@ -14,7 +14,7 @@ export const OLLAMA_FEATURES = [
   { key: 'vulnerabilities', label: 'Tri des vulnérabilités', hint: 'Priorités et texte d\'issue pour une image' },
   { key: 'release-notes', label: 'Notes de version avant mise à niveau', hint: 'Résumé des releases GitHub, changements cassants' },
   { key: 'nl-search', label: 'Recherche en langage naturel', hint: 'Audit : une phrase devient des filtres' },
-  { key: 'digest', label: 'Résumé d\'activité', hint: 'Synthèse des déploiements, échecs et alertes' },
+  { key: 'digest', label: 'Synthèse des résumés', hint: 'Paragraphe de synthèse en tête des résumés périodiques de notification (titres d\'évènements seulement)' },
   { key: 'proxy', label: 'Explication des reverse proxies', hint: 'Routes et domaines d\'un hôte' },
   { key: 'support', label: 'Synthèse du tech support', hint: 'Symptôme, hypothèses, ordre de vérification' },
   { key: 'metrics', label: 'Lecture de l\'historique des ressources', hint: 'CPU, mémoire, redémarrages d\'un conteneur' },

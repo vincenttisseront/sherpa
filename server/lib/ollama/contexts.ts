@@ -223,3 +223,54 @@ export function vulnerabilityParts(v: VulnerabilityContext): ContextPart[] {
     ...(v.usedBy.length ? [{ title: 'Utilisé par', lines: v.usedBy.map(u => `${u.label}${u.services.length ? ` (services ${u.services.join(', ')})` : ''}`), weight: 1 }] : []),
   ]
 }
+
+// --- Résumé périodique ------------------------------------------------------------------------
+
+export interface DigestEventLine { event: string, severity: string, title: string, createdAt: Date }
+
+const SEVERITY_FR: Record<string, string> = { error: 'erreur', warning: 'alerte', info: 'information' }
+/** Évènements transmis au modèle (les plus graves d'abord) : au-delà, seuls les décomptes sont donnés. */
+export const DIGEST_MAX_EVENTS = 150
+
+/** Décomptes puis évènements par gravité ; que des titres déjà envoyés aux canaux, jamais de détail. */
+export function digestParts(events: readonly DigestEventLine[], eventLabel: (event: string) => string): { header: string[], parts: ContextPart[] } {
+  const header = [
+    `${events.length} évènement(s) : ${(['error', 'warning', 'info'] as const).map(s => `${events.filter(e => e.severity === s).length} ${SEVERITY_FR[s]}(s)`).join(', ')}`,
+  ]
+  const byEvent = new Map<string, number>()
+  for (const e of events) byEvent.set(e.event, (byEvent.get(e.event) ?? 0) + 1)
+  header.push(`Par type : ${[...byEvent.entries()].sort((a, b) => b[1] - a[1]).map(([e, n]) => `${eventLabel(e)} ${n}`).join(', ')}`)
+  const parts: ContextPart[] = []
+  const sorted = [...events].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+  const weights: Record<string, number> = { error: 3, warning: 2, info: 0.5 }
+  let left = DIGEST_MAX_EVENTS
+  for (const sev of ['error', 'warning', 'info']) {
+    const lines = sorted.filter(e => e.severity === sev).slice(0, left).map(e => `${stamp(e.createdAt.toISOString())} · ${eventLabel(e.event)} · ${e.title}`)
+    left -= lines.length
+    if (lines.length) parts.push({ title: `Évènements (${SEVERITY_FR[sev]})`, lines, weight: weights[sev] })
+  }
+  return { header, parts }
+}
+
+/**
+ * Le texte du modèle part vers des canaux (e-mail, Slack, Teams, Discord…) qui interprètent balises,
+ * liens et mentions : on n'en garde que du texte brut. Une consigne glissée dans un titre d'évènement
+ * ne peut donc ni lier un site ni mentionner tout un canal.
+ */
+export function plainNarrative(text: string): string {
+  const printable = [...text].filter((c) => { const n = c.charCodeAt(0); return n === 9 || n === 10 || (n >= 32 && n !== 127) }).join('')
+  return printable
+    .replace(/<[^>\n]{0,200}>/g, '')
+    .replace(/\b(?:https?|ftp):\/\/\S+/gi, '[lien retiré]')
+    .replace(/@(channel|here|everyone)\b/gi, '$1')
+    .replace(/[*_`~#]{2,}/g, '')
+}
+
+/** Texte inséré en tête du résumé : la synthèse, puis les points à surveiller ; texte brut, borné. */
+export function digestNarrative(report: { summary: string, actions: readonly string[] }, maxChars = 1200): string {
+  const lines = [plainNarrative(report.summary).trim()]
+  const watch = report.actions.map(a => plainNarrative(a).trim()).filter(Boolean).slice(0, 5)
+  if (watch.length) lines.push('À surveiller :', ...watch.map(a => `• ${a}`))
+  const text = lines.filter(Boolean).join('\n')
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1).trimEnd()}…` : text
+}

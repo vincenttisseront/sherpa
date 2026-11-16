@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composeDigest, digestDue, lastScheduled } from '../../server/lib/digest'
+import { composeDigest, digestDue, lastScheduled, withNarrative } from '../../server/lib/digest'
 
 // Novembre 2026 : heure d'hiver à Paris (UTC+1). Lundi 9, mardi 10.
 const at = (day: number, hhmm: string) => new Date(`2026-11-${String(day).padStart(2, '0')}T${hhmm}:00+01:00`)
@@ -40,5 +40,12 @@ describe('composition du résumé', () => {
   it('tronque la liste au-delà de huit évènements', () => {
     const many = Array.from({ length: 12 }, (_, i) => e('deployment.succeeded', 'info', `OK ${i}`, i))
     expect(composeDigest(many, 'weekly', at(3, '08:00'), at(10, '08:00'))!.summary).toContain('… et 4 autre(s)')
+  })
+})
+
+describe('synthèse automatique', () => {
+  it('placée avant le récapitulatif et signalée ; sans synthèse, le récapitulatif seul', () => {
+    expect(withNarrative('Du 9 au 10 : 1 erreur(s).', 'Un échec sur Billing.')).toBe('Synthèse automatique (modèle local, à vérifier) :\nUn échec sur Billing.\n\nDu 9 au 10 : 1 erreur(s).')
+    expect(withNarrative('Récap.', null)).toBe('Récap.')
   })
 })

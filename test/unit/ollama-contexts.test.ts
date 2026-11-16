@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { analysisExplainInput } from '../../shared/schemas/ollama'
-import { analysisParts, deploymentParts, diagnosticLines, metricsParts, proxyParts, seriesStats, supportParts, supportWeight, vulnerabilityParts } from '../../server/lib/ollama/contexts'
+import { analysisParts, deploymentParts, diagnosticLines, DIGEST_MAX_EVENTS, digestNarrative, digestParts, metricsParts, plainNarrative, proxyParts, seriesStats, supportParts, supportWeight, vulnerabilityParts } from '../../server/lib/ollama/contexts'
 import type { DeploymentDetailDto } from '../../shared/schemas/deployments'
 import { groupFindings } from '../../server/lib/remediation'
 import type { Finding } from '../../shared/schemas/trivy'
@@ -274,5 +274,41 @@ describe('vulnérabilités Trivy', () => {
     const one = vulnerabilityParts(ctx({ groups: groupFindings(same, { minSeverity: 'HIGH', fixableOnly: false }) })).find(p => p.title.startsWith('Paquets'))!.lines[0]!
     expect(one).toContain('10 vulnérabilité(s)')
     expect(one).toContain('… +4')
+  })
+})
+
+describe('résumé périodique', () => {
+  const ev = (event: string, severity: string, title: string, min: number) => ({ event, severity, title, createdAt: new Date(Date.UTC(2026, 10, 10, 7, 0) - min * 60_000) })
+  const label = (e: string) => `L:${e}`
+
+  it('décomptes en en-tête, évènements par gravité, graves d\'abord et plus fortement pondérés', () => {
+    const { header, parts } = digestParts([ev('deployment.succeeded', 'info', 'Billing déployé', 5), ev('deployment.failed', 'error', 'Billing en échec', 30), ev('resource.alert', 'warning', 'Mémoire haute', 10), ev('deployment.failed', 'error', 'Portail en échec', 20)], label)
+    expect(header[0]).toBe('4 évènement(s) : 2 erreur(s), 1 alerte(s), 1 information(s)')
+    expect(header[1]).toBe('Par type : L:deployment.failed 2, L:deployment.succeeded 1, L:resource.alert 1')
+    expect(parts.map(p => p.title)).toEqual(['Évènements (erreur)', 'Évènements (alerte)', 'Évènements (information)'])
+    expect(parts[0]!.lines).toEqual(['2026-11-10T06:40Z · L:deployment.failed · Portail en échec', '2026-11-10T06:30Z · L:deployment.failed · Billing en échec'])
+    expect(parts[0]!.weight).toBeGreaterThan(parts[2]!.weight!)
+  })
+
+  it('borne le nombre d\'évènements transmis, les plus graves conservés', () => {
+    const many = [...Array.from({ length: 300 }, (_, i) => ev('deployment.succeeded', 'info', `ok ${i}`, i)), ev('deployment.failed', 'error', 'échec', 1)]
+    const { header, parts } = digestParts(many, label)
+    expect(header[0]).toContain('301 évènement(s)')
+    expect(parts.flatMap(p => p.lines)).toHaveLength(DIGEST_MAX_EVENTS)
+    expect(parts[0]!.title).toBe('Évènements (erreur)')
+  })
+
+  it('ne garde que du texte brut : balises, liens et mentions de masse retirés', () => {
+    const t = plainNarrative('Voir <https://evil.example/x> et https://evil.example/y <!channel> @channel <script>alert(1)</script> **gras** ok')
+    expect(t).not.toMatch(/https?:|<|>|@channel/)
+    expect(t).toContain('[lien retiré]')
+    expect(t).toContain('ok')
+  })
+
+  it('synthèse puis points à surveiller, bornés', () => {
+    expect(digestNarrative({ summary: ' Deux échecs sur Billing. ', actions: ['Relancer Billing', '', 'Lire les logs'] })).toBe('Deux échecs sur Billing.\nÀ surveiller :\n• Relancer Billing\n• Lire les logs')
+    expect(digestNarrative({ summary: 'Calme.', actions: [] })).toBe('Calme.')
+    expect(digestNarrative({ summary: 'x'.repeat(5000), actions: [] }, 100)).toHaveLength(100)
+    expect(digestNarrative({ summary: 'a', actions: Array.from({ length: 9 }, (_, i) => `étape ${i}`) }).match(/•/g)).toHaveLength(5)
   })
 })

@@ -79,6 +79,17 @@ export const TASKS: Partial<Record<OllamaFeature, TaskSpec>> = {
     causes: 'changements notables, les plus risqués d\'abord ; « title » les nomme, « evidence » cite la release et la phrase des notes (courte).',
     actions: 'liste à faire avant, pendant et après la mise à niveau, dans l\'ordre (sauvegarde, variable à modifier, point à vérifier ensuite).',
   },
+  digest: {
+    role: 'On te donne les évènements de notification d\'une période (échecs et réussites de déploiement, alertes de ressources, vulnérabilités, serveurs indisponibles…) : tu en rédiges la synthèse pour le message récapitulatif d\'un administrateur.',
+    rules: [
+      'Ne rapporte que ce que disent les évènements : aucun nom, aucun chiffre, aucune cause qui n\'y figure. Les décomptes sont ceux de l\'en-tête, ne les recalcule pas.',
+      'summary : deux à quatre phrases : ce qui compte d\'abord (échecs, alertes, indisponibilités), puis l\'activité normale en une phrase. Si la période est calme, dis-le brièvement.',
+      'Regroupe les évènements de même nature (« 3 échecs de déploiement sur Billing ») au lieu de les énumérer. N\'écris ni titre ni formule de politesse.',
+      'severity : error si un évènement de gravité erreur n\'est pas suivi d\'un retour à la normale visible, warning s\'il y a des alertes, ok sinon.',
+    ],
+    causes: 'faits marquants de la période, les plus graves d\'abord ; « title » les nomme avec leur nombre, « evidence » donne les projets, cibles ou serveurs concernés.',
+    actions: 'points à surveiller ou à traiter, du plus urgent au moins urgent ; liste vide si rien n\'est à faire.',
+  },
   proxy: {
     role: 'On te donne la carte des reverse proxies d\'un hôte (proxies, routes, certificats, erreurs ACME, ports publiés hors proxy) : tu expliques ce qui est servi et ce qui ne va pas.',
     rules: [

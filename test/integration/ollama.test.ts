@@ -345,6 +345,45 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
     await svc.saveOllamaSettings({ ...base }, null)
   })
 
+  it('résumé périodique : synthèse en texte brut en tête, jamais bloquante', async () => {
+    const { narrateDigest } = await import('../../server/services/ai-digest')
+    const at = (min: number) => new Date(Date.UTC(2026, 10, 10, 7, 0) - min * 60_000)
+    const events = [
+      { event: 'deployment.failed', severity: 'error', title: 'Billing (prod) : déploiement en échec — password=hunter2hunter2', createdAt: at(20) },
+      { event: 'deployment.succeeded', severity: 'info', title: 'Portail déployé', createdAt: at(5) },
+    ]
+    const from = at(24 * 60)
+    const to = at(0)
+
+    // Fonction non cochée : rien n'est envoyé.
+    await svc.saveOllamaSettings({ ...base, features: ['logs'] }, null)
+    expect(await narrateDigest(events, 'daily', from, to)).toBeNull()
+    expect(mock.calls).toHaveLength(0)
+    await svc.saveOllamaSettings({ ...base }, null)
+
+    mock.reply = JSON.stringify({ severity: 'error', summary: 'Un échec sur Billing. Voir https://evil.example/x @channel <b>vite</b>.', causes: [], actions: ['Relancer Billing'] })
+    const memo = new Map()
+    const text = await narrateDigest(events, 'daily', from, to, memo)
+    expect(text).toBe('Un échec sur Billing. Voir [lien retiré] channel vite.\nÀ surveiller :\n• Relancer Billing')
+    const sent = lastPrompt()
+    expect(sent).toContain('Billing (prod) : déploiement en échec')
+    expect(sent).toContain('1 erreur(s), 0 alerte(s), 1 information(s)')
+    expect(sent).not.toContain('hunter2hunter2')
+    // Mêmes évènements sur un autre canal : un seul appel au modèle.
+    expect(await narrateDigest(events, 'daily', from, to, memo)).toBe(text)
+    expect(mock.calls).toHaveLength(1)
+
+    // Rien à résumer : le modèle n'est pas appelé.
+    mock.calls.length = 0
+    expect(await narrateDigest([], 'daily', from, to)).toBeNull()
+    expect(mock.calls).toHaveLength(0)
+
+    // Modèle injoignable ou occupé : pas d'erreur, le résumé part sans synthèse.
+    const { OllamaError } = await import('../../server/adapters/ollama')
+    mock.failWith = new OllamaError('Ollama injoignable (connexion refusée)', 'unreachable')
+    expect(await narrateDigest(events, 'weekly', from, to)).toBeNull()
+  })
+
   it('supprime le jeton à la demande', async () => {
     const { settings, credentialChanged } = await svc.saveOllamaSettings({ ...base, clearToken: true }, null)
     expect(settings.hasToken).toBe(false)
