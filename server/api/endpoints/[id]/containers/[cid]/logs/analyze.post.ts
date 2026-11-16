@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { logAnalysisFocus } from '../../../../../../../shared/schemas/ollama'
 import { portainer } from '../../../../../../adapters/portainer'
-import { audit } from '../../../../../../utils/audit'
-import { canOn, clientIp, requireAnyPermission } from '../../../../../../utils/auth'
+import { auditedAssist } from '../../../../../../utils/ai-audit'
+import { canOn, requireAnyPermission } from '../../../../../../utils/auth'
 import { requestProgress } from '../../../../../../utils/progress'
 import { readValidated } from '../../../../../../utils/validation'
 import { liveEndpoints } from '../../../../../../services/live'
@@ -24,17 +24,10 @@ export default defineEventHandler(async (event) => {
   const [row] = await liveEndpoints(user, id)
   if (!row || !canOn(user, 'logs:read', { serverId: row.server.id })) throw createError({ statusCode: 404, statusMessage: 'Endpoint introuvable' })
   const progress = requestProgress(event)
-  const base = { actorUserId: user.id, actorLabel: user.email, action: 'ollama.analyze', targetType: 'container', targetId: cid, serverId: row.server.id, ip: clientIp(event) }
-  try {
+  return auditedAssist(event, user, { feature: 'logs', targetType: 'container', targetId: cid, serverId: row.server.id, withQuestion: !!focus }, async () => {
     await progress.step('Lecture des logs du conteneur', 1, 2)
     const lines = await portainer().containerLogs(await connectionFor(row.server), row.ep.portainerEndpointId, cid, tail)
     await progress.step('Analyse par le modèle Ollama (peut prendre une minute)', 2, 2)
-    const analysis = await analyzeLogsWithOllama({ lines, source: `Conteneur ${cid.slice(0, 12)} (hôte ${row.server.name})`, focus })
-    await audit({ ...base, outcome: 'success', details: { source: 'container', model: analysis.meta.model, totalLines: analysis.meta.totalLines, sentLines: analysis.meta.sentLines, durationMs: analysis.meta.durationMs, withQuestion: !!focus } })
-    return analysis
-  }
-  catch (err) {
-    await audit({ ...base, outcome: 'failure', details: { source: 'container', error: (err as { statusMessage?: string }).statusMessage ?? 'Erreur' } })
-    throw err
-  }
+    return analyzeLogsWithOllama({ lines, source: `Conteneur ${cid.slice(0, 12)} (hôte ${row.server.name})`, focus })
+  })
 })

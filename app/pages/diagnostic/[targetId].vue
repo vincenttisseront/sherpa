@@ -84,6 +84,7 @@ const allowed = (a: DiagnosticAction) => a.kind === 'link' || canExecute.value
         </span>
       </template>
       <NuxtLink v-if="d" :to="`/containers?endpoint=${d.endpointId}&stack=${encodeURIComponent(d.stack)}`" class="small link"><Activity :size="13" /> Conteneurs</NuxtLink>
+      <AiReport feature="support" :url="`/api/targets/${targetId}/tech-support/summary`" label="Synthèse Ollama" title="Synthèse du rapport tech support" causesLabel="Points à retenir" actionsLabel="Prochaines étapes" draftLabel="Texte de ticket" />
       <UiTechSupportButton :href="`/api/targets/${targetId}/tech-support`" title="Rapport texte : état, diagnostic, conteneurs, réseaux, configuration, déploiements et journaux (secrets masqués)" />
       <UiButton v-if="d && canExecute" size="sm" :loading="busy === 'redeploy'" title="Recrée les conteneurs de la release active avec la configuration actuelle" @click="run({ kind: 'redeploy' })">Redéployer</UiButton>
       <UiButton size="sm" :loading="loading" title="Relire l'état des conteneurs" @click="refresh()"><RefreshCw :size="14" /> Relire</UiButton>

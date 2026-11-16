@@ -5,6 +5,7 @@
  */
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { OLLAMA_FEATURE_KEYS } from '../../shared/schemas/ollama'
 import { databaseAvailable, setupTestDatabase } from '../helpers/db'
 
 const available = await databaseAvailable()
@@ -18,7 +19,7 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
   let envMod: typeof import('../../server/utils/env')
 
   const TOKEN = 'jeton-ollama-0123456789'
-  const base = { enabled: true, baseUrl: 'http://ollama:11434', model: 'llama3.1:8b', timeoutSec: 60, contextTokens: 8192, clearToken: false }
+  const base = { enabled: true, baseUrl: 'http://ollama:11434', model: 'llama3.1:8b', timeoutSec: 60, contextTokens: 8192, features: [...OLLAMA_FEATURE_KEYS], clearToken: false }
 
   beforeAll(async () => {
     process.env.OLLAMA_ADAPTER = 'mock'
@@ -48,7 +49,7 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
   const lastPrompt = () => mock.calls.at(-1)!.req.messages.map(m => m.content).join('\n')
 
   it('désactivé par défaut : aucune analyse, rien n\'est envoyé', async () => {
-    expect(await svc.ollamaStatus()).toEqual({ enabled: false, model: null })
+    expect(await svc.ollamaStatus()).toEqual({ enabled: false, model: null, features: [] })
     await expect(analysis.analyzeLogsWithOllama({ lines: ['une ligne'], source: 's' })).rejects.toMatchObject({ statusCode: 409 })
     expect(mock.calls).toHaveLength(0)
   })
@@ -61,9 +62,9 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
   it('enregistre les réglages : jeton chiffré en base, jamais renvoyé', async () => {
     const { settings, credentialChanged } = await svc.saveOllamaSettings({ ...base, baseUrl: 'http://ollama:11434/', token: TOKEN }, null)
     expect(credentialChanged).toBe(true)
-    expect(settings).toEqual({ enabled: true, baseUrl: 'http://ollama:11434', model: 'llama3.1:8b', timeoutSec: 60, contextTokens: 8192, hasToken: true })
+    expect(settings).toEqual({ enabled: true, baseUrl: 'http://ollama:11434', model: 'llama3.1:8b', timeoutSec: 60, contextTokens: 8192, features: [...OLLAMA_FEATURE_KEYS], hasToken: true })
     expect(JSON.stringify(settings)).not.toContain(TOKEN)
-    expect(await svc.ollamaStatus()).toEqual({ enabled: true, model: 'llama3.1:8b' })
+    expect(await svc.ollamaStatus()).toEqual({ enabled: true, model: 'llama3.1:8b', features: [...OLLAMA_FEATURE_KEYS] })
 
     const [row] = await dbm.db().select().from(dbm.schema.appSettings).where(eq(dbm.schema.appSettings.key, 'ollama.settings'))
     expect(JSON.stringify(row)).not.toContain(TOKEN)
@@ -186,6 +187,53 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
       delete process.env.OLLAMA_MAX_CONCURRENT
       envMod.resetEnvCache()
     }
+  })
+
+  it('chaque fonction s\'active séparément', async () => {
+    await svc.saveOllamaSettings({ ...base, features: ['metrics'] }, null)
+    expect(await svc.ollamaStatus()).toMatchObject({ enabled: true, features: ['metrics'] })
+    await expect(analysis.analyzeLogsWithOllama({ lines: ['x'], source: 's' })).rejects.toMatchObject({ statusCode: 409, statusMessage: expect.stringContaining('fonction') })
+    expect(mock.calls).toHaveLength(0)
+    await svc.saveOllamaSettings({ ...base }, null)
+    await expect(analysis.analyzeLogsWithOllama({ lines: ['x'], source: 's' })).resolves.toMatchObject({ draft: null })
+  })
+
+  it('socle commun : masque chaque bloc, renvoie le brouillon et masque aussi la réponse', async () => {
+    const { runAiReport } = await import('../../server/services/ai-task')
+    mock.reply = JSON.stringify({
+      severity: 'warning',
+      summary: 'Le certificat échoue (Authorization: Bearer abcdefghijklmnop1234567890).',
+      causes: [{ title: 'Quota ACME', evidence: 'too many failed authorizations' }],
+      actions: ['Attendre une heure'],
+      draft: 'Titre : certificat\nToken: ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+    })
+    const report = await runAiReport({
+      feature: 'support',
+      header: ['Cible Billing'],
+      parts: [
+        { title: 'Journal', lines: ['password=hunter2hunter2', 'ERROR boom'], weight: 3 },
+        { title: 'Configuration', lines: ['API_KEY=abcdefghijklmnopqrstuvwxyz012345'], weight: 0.4 },
+      ],
+      focus: 'et le jeton ghp_abcdefghijklmnopqrstuvwxyz0123456789 ?',
+      withDraft: true,
+    })
+    const sent = lastPrompt()
+    for (const secret of ['hunter2hunter2', 'abcdefghijklmnopqrstuvwxyz012345', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789']) expect(sent).not.toContain(secret)
+    expect(sent).toContain('<data titre="Journal"')
+    expect(sent).toContain('<data titre="Configuration"')
+    expect(report.severity).toBe('warning')
+    expect(report.causes).toEqual([{ title: 'Quota ACME', evidence: 'too many failed authorizations' }])
+    expect(report.draft).toContain('Titre : certificat')
+    expect(JSON.stringify(report)).not.toContain('abcdefghijklmnop1234567890')
+    expect(JSON.stringify(report)).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789')
+  })
+
+  it('socle commun : une fonction désactivée n\'envoie rien au modèle', async () => {
+    const { runAiReport } = await import('../../server/services/ai-task')
+    await svc.saveOllamaSettings({ ...base, features: ['logs'] }, null)
+    await expect(runAiReport({ feature: 'proxy', header: [], parts: [{ title: 'Routes', lines: ['a'] }] })).rejects.toMatchObject({ statusCode: 409 })
+    expect(mock.calls).toHaveLength(0)
+    await svc.saveOllamaSettings({ ...base }, null)
   })
 
   it('supprime le jeton à la demande', async () => {

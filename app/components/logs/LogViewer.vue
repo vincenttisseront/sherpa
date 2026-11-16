@@ -212,7 +212,7 @@ watch(() => props.deploymentId, () => {
       <span class="spacer" />
       <span v-if="deploymentId && live" class="live" :class="{ on: connected }">{{ connected ? '● en direct' : '○ connexion…' }}</span>
       <UiButton size="sm" variant="ghost" :aria-pressed="follow" @click="follow = !follow">{{ follow ? 'Suivi' : 'Suivre' }}</UiButton>
-      <LogAnalysis v-if="deploymentId" :url="`/api/deployments/${deploymentId}/logs/analyze`" :body="analysisBody" />
+      <AiReport v-if="deploymentId" feature="logs" :url="`/api/deployments/${deploymentId}/logs/analyze`" :body="analysisBody" />
       <UiButton size="sm" aria-label="Télécharger" title="Télécharger les logs" @click="download"><Download :size="14" /></UiButton>
     </div>
     <div ref="box" class="lines mono" :style="{ height }" role="log" aria-live="polite" @scroll="onScroll">

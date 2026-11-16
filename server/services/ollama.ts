@@ -5,8 +5,8 @@
  */
 import { eq } from 'drizzle-orm'
 import { createError } from 'h3'
-import type { OllamaSettingsDto, OllamaSettingsInput, OllamaStatusDto, OllamaTestInput, OllamaTestResult } from '../../shared/schemas/ollama'
-import { OLLAMA_DEFAULT_URL } from '../../shared/schemas/ollama'
+import type { OllamaFeature, OllamaSettingsDto, OllamaSettingsInput, OllamaStatusDto, OllamaTestInput, OllamaTestResult } from '../../shared/schemas/ollama'
+import { OLLAMA_DEFAULT_URL, OLLAMA_FEATURE_KEYS } from '../../shared/schemas/ollama'
 import { byCode } from '../../shared/utils/compare'
 import { type OllamaConnection, OllamaError, ollama } from '../adapters/ollama'
 import { db, schema } from '../db/client'
@@ -24,6 +24,7 @@ export interface OllamaStoredSettings {
   model: string
   timeoutSec: number
   contextTokens: number
+  features: OllamaFeature[]
   tokenSecretId: string | null
 }
 
@@ -33,6 +34,7 @@ const DEFAULTS: OllamaStoredSettings = {
   model: 'llama3.1:8b',
   timeoutSec: 120,
   contextTokens: 8192,
+  features: [...OLLAMA_FEATURE_KEYS],
   tokenSecretId: null,
 }
 
@@ -47,6 +49,7 @@ const toDto = (s: OllamaStoredSettings): OllamaSettingsDto => ({
   model: s.model,
   timeoutSec: s.timeoutSec,
   contextTokens: s.contextTokens,
+  features: s.features,
   hasToken: s.tokenSecretId !== null,
 })
 
@@ -57,7 +60,7 @@ export async function ollamaSettingsDto(): Promise<OllamaSettingsDto> {
 /** Ce que voit un lecteur de logs : disponible ou non, et le modèle ; jamais l'adresse du serveur. */
 export async function ollamaStatus(): Promise<OllamaStatusDto> {
   const s = await ollamaSettings()
-  return { enabled: s.enabled, model: s.enabled ? s.model : null }
+  return { enabled: s.enabled, model: s.enabled ? s.model : null, features: s.enabled ? s.features : [] }
 }
 
 async function readToken(secretId: string | null): Promise<string | null> {
@@ -110,6 +113,7 @@ export async function saveOllamaSettings(input: OllamaSettingsInput, userId: str
       model: input.model,
       timeoutSec: input.timeoutSec,
       contextTokens: input.contextTokens,
+      features: OLLAMA_FEATURE_KEYS.filter(k => input.features.includes(k)),
       tokenSecretId,
     }
     await tx.insert(schema.appSettings).values({ key: SETTINGS_KEY, value, updatedBy: userId })

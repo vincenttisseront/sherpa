@@ -191,6 +191,7 @@ const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.in
           <MetricsChart title="CPU" :points="cpuPoints" :format="v => `${Math.round(v * 10) / 10} %`" />
           <MetricsChart title="Mémoire" :points="memPoints" :format="v => fmtBytesShort(v)" :line="memLimit ? { value: memLimit, label: `limite ${fmtBytesShort(memLimit)}` } : null" />
           <p class="muted small">Redémarrages sur la période : <strong>{{ restartsGained }}</strong>. Moyenne du CPU, maximum de la mémoire par intervalle.</p>
+          <AiReport feature="metrics" :url="`/api/endpoints/${endpointId}/containers/${containerId}/metrics/analyze`" :body="{ range }" label="Lire l'historique avec Ollama" title="Lecture de l'historique des ressources" causesLabel="Constats" actionsLabel="Suites possibles" />
         </template>
       </section>
 
@@ -201,7 +202,7 @@ const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.in
           <input v-model="logFilter" class="input" type="search" placeholder="Filtrer les lignes…" aria-label="Filtrer les logs">
           <UiSwitch v-model="follow" label="En direct" />
           <UiButton size="sm" variant="ghost" aria-label="Actualiser" @click="loadLogs"><RefreshCw :size="14" /></UiButton>
-          <LogAnalysis :url="`/api/endpoints/${endpointId}/containers/${containerId}/logs/analyze`" :body="{ tail: 300 }" />
+          <AiReport feature="logs" :url="`/api/endpoints/${endpointId}/containers/${containerId}/logs/analyze`" :body="{ tail: 300 }" />
         </div>
         <section v-if="insights.length" class="insights" aria-label="Analyse des logs">
           <h3 class="small">Analyse des logs <span class="muted tiny">({{ insights.length }} cause{{ insights.length > 1 ? 's' : '' }} reconnue{{ insights.length > 1 ? 's' : '' }})</span></h3>

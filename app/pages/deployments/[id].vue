@@ -9,6 +9,9 @@ const toast = useToast()
 
 // Échec acquitté : retiré du tableau de bord, conservé ici et dans l'historique.
 const FAILED = ['FAILED', 'ROLLED_BACK', 'VALIDATION_FAILED']
+/** États où un diagnostic par Ollama a un sens (échec, retour arrière ou stack dégradée). */
+const DIAGNOSABLE = [...FAILED, 'DEGRADED']
+const canDiagnose = computed(() => !!d.value && DIAGNOSABLE.includes(d.value.status) && can('logs:read', { projectId: d.value.project.id }))
 const canAck = computed(() => !!d.value && FAILED.includes(d.value.status) && can('deployment:execute', { projectId: d.value.project.id }))
 const acking = ref(false)
 async function setAcknowledged(value: boolean) {
@@ -122,6 +125,7 @@ const tabs = computed(() => [
           <span v-if="d.acknowledged" class="ack-note small">acquitté{{ d.acknowledged.by ? ` par ${d.acknowledged.by}` : '' }} le {{ fmt(d.acknowledged.at) }}</span>
         </span>
       </template>
+      <AiReport v-if="canDiagnose" feature="deploy-failure" :url="`/api/deployments/${d.id}/diagnose`" label="Diagnostiquer avec Ollama" title="Diagnostic de l'échec" causesLabel="Causes probables" actionsLabel="Pour corriger" />
       <UiButton v-if="canRelaunch" size="sm" title="Relance avec la même release (Compose, source, ports approuvés)" @click="openRelaunch">Relancer…</UiButton>
       <template v-if="canAck">
         <UiButton v-if="!d.acknowledged" size="sm" :loading="acking" title="Retire cet échec du tableau de bord ; il reste dans l'historique" @click="setAcknowledged(true)">Acquitter l'échec</UiButton>

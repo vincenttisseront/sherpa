@@ -1,28 +1,38 @@
 <script setup lang="ts">
 /**
- * Bouton « Analyser avec Ollama » : demande au serveur l'analyse d'un extrait de logs par un modèle
- * local et affiche la réponse (cause probable, actions). Masqué tant que le connecteur n'est pas
- * activé. Le navigateur n'appelle jamais Ollama : seule l'API de la plateforme est jointe, et les
+ * Bouton d'assistance par Ollama : demande au serveur une analyse par un modèle local et affiche le
+ * rapport (points clés, actions, texte à copier). Masqué tant que le connecteur ou la fonction n'est
+ * pas activé. Le navigateur n'appelle jamais Ollama : seule l'API de la plateforme est jointe, et les
  * secrets sont masqués côté serveur avant envoi au modèle.
  */
-import type { LogAnalysisDto, OllamaStatusDto } from '#shared/schemas/ollama'
-import { Sparkles } from 'lucide-vue-next'
+import type { AiReportDto, OllamaFeature, OllamaStatusDto } from '#shared/schemas/ollama'
+import { Copy, Sparkles } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
-  /** Route d'analyse (POST). */
+  feature: OllamaFeature
+  /** Route de la demande (POST). */
   url: string
-  /** Corps de la demande (filtres, nombre de lignes) ; la question libre y est ajoutée. */
+  /** Corps de la demande ; la question libre y est ajoutée si `ask` est actif. */
   body?: Record<string, unknown>
+  label?: string
+  title?: string
+  /** Titres des listes du rapport selon la fonction. */
+  causesLabel?: string
+  actionsLabel?: string
+  draftLabel?: string
+  /** Champ « Orienter l'analyse » (question libre). */
+  ask?: boolean
   size?: 'sm' | 'md'
-}>(), { body: () => ({}), size: 'sm' })
+}>(), { body: () => ({}), label: 'Analyser avec Ollama', title: 'Analyse par Ollama', causesLabel: 'Causes probables', actionsLabel: 'Quoi faire', draftLabel: 'Texte proposé', ask: true, size: 'sm' })
 
 const toast = useToast()
-const { data: status } = useFetch<OllamaStatusDto>('/api/ollama/status', { key: 'ollama-status', default: () => ({ enabled: false, model: null }) })
+const { data: status } = useFetch<OllamaStatusDto>('/api/ollama/status', { key: 'ollama-status', default: () => ({ enabled: false, model: null, features: [] }) })
+const available = computed(() => !!status.value?.enabled && status.value.features.includes(props.feature))
 
 const open = ref(false)
 const focus = ref('')
 const loading = ref(false)
-const result = ref<LogAnalysisDto | null>(null)
+const result = ref<AiReportDto | null>(null)
 const error = ref<string | null>(null)
 
 const TONE = { ok: 'success', warning: 'warning', error: 'danger' } as const
@@ -32,7 +42,7 @@ async function run() {
   loading.value = true
   error.value = null
   try {
-    result.value = await $fetch<LogAnalysisDto>(props.url, { method: 'POST', body: { ...props.body, focus: focus.value.trim() || undefined } })
+    result.value = await $fetch<AiReportDto>(props.url, { method: 'POST', body: { ...props.body, focus: focus.value.trim() || undefined } })
   }
   catch (err) {
     error.value = apiError(err).message
@@ -40,6 +50,16 @@ async function run() {
   }
   finally {
     loading.value = false
+  }
+}
+
+async function copyDraft() {
+  try {
+    await navigator.clipboard.writeText(result.value?.draft ?? '')
+    toast.info('Texte copié')
+  }
+  catch {
+    toast.error('Copie impossible')
   }
 }
 
@@ -52,9 +72,9 @@ function start() {
 </script>
 
 <template>
-  <template v-if="status?.enabled">
-    <UiButton :size="size" title="Analyser ces logs avec le modèle local Ollama" @click="start"><Sparkles :size="14" /> Analyser avec Ollama</UiButton>
-    <UiModal v-model:open="open" title="Analyse des logs par Ollama" width="720px">
+  <template v-if="available">
+    <UiButton :size="size" title="Demander une analyse au modèle local Ollama" @click="start"><Sparkles :size="14" /> {{ label }}</UiButton>
+    <UiModal v-model:open="open" :title="title" width="720px">
       <div class="analysis">
         <p v-if="loading" class="muted" role="status">Analyse en cours par {{ status?.model }}… (jusqu'à une minute si le modèle doit se charger)</p>
         <template v-else-if="result">
@@ -65,7 +85,7 @@ function start() {
           <p class="summary">{{ result.summary }}</p>
           <p v-if="!result.structured" class="muted small">Le modèle n'a pas respecté le format demandé : texte repris tel quel.</p>
           <section v-if="result.causes.length">
-            <h3>Causes probables</h3>
+            <h3>{{ causesLabel }}</h3>
             <ol>
               <li v-for="(c, i) in result.causes" :key="i">
                 <strong>{{ c.title }}</strong>
@@ -74,16 +94,20 @@ function start() {
             </ol>
           </section>
           <section v-if="result.actions.length">
-            <h3>Quoi faire</h3>
+            <h3>{{ actionsLabel }}</h3>
             <ol>
               <li v-for="(a, i) in result.actions" :key="i">{{ a }}</li>
             </ol>
           </section>
-          <p class="muted small note">Analyse générée par un modèle de langage local : elle peut se tromper, à vérifier dans les logs avant d'agir. Secrets masqués avant envoi ; rien n'est conservé.</p>
+          <section v-if="result.draft">
+            <h3>{{ draftLabel }} <UiButton size="sm" variant="ghost" aria-label="Copier le texte" @click="copyDraft"><Copy :size="13" /></UiButton></h3>
+            <pre class="draft mono small">{{ result.draft }}</pre>
+          </section>
+          <p class="muted small note">Généré par un modèle de langage local : il peut se tromper, à vérifier avant d'agir. Secrets masqués avant envoi ; rien n'est conservé.</p>
         </template>
         <p v-else-if="error" class="err" role="alert">{{ error }}</p>
 
-        <form class="ask" @submit.prevent="run">
+        <form v-if="ask" class="ask" @submit.prevent="run">
           <label for="ol-focus" class="small muted">Orienter l'analyse (facultatif)</label>
           <div class="ask-row">
             <input id="ol-focus" v-model="focus" class="input" maxlength="300" placeholder="Ex. Pourquoi le service redémarre-t-il en boucle ?">
@@ -104,6 +128,7 @@ ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 
 .evidence { color: var(--text-muted); white-space: pre-wrap; word-break: break-word; }
 .small { font-size: 12.5px; margin: 0; }
 .err { color: var(--danger); margin: 0; }
+.draft { margin: 0; padding: var(--space-2) var(--space-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
 .note { border-top: 1px solid var(--border); padding-top: var(--space-2); }
 .ask { display: flex; flex-direction: column; gap: 4px; }
 .ask-row { display: flex; gap: var(--space-2); }

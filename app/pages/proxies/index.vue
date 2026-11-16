@@ -217,6 +217,7 @@ const certsOfRoute = (r: (typeof selRoutes.value)[number]) => map.value?.certifi
         </div>
       </template>
       <NuxtLink v-if="endpoint" :to="`/servers/${endpoint.serverId}?tab=proxy`" class="small link" title="Configuration du proxy sur la fiche du serveur">Serveur <ExternalLink :size="12" /></NuxtLink>
+      <AiReport v-if="endpoint && map && hasAny('server:read')" feature="proxy" :url="`/api/endpoints/${endpoint.id}/proxy-map/explain`" label="Expliquer avec Ollama" title="Explication des reverse proxies" causesLabel="Constats" actionsLabel="À vérifier" />
       <UiButton size="sm" :loading="loading" title="Relire les proxies" aria-label="Actualiser" @click="load(true)"><RefreshCw :size="14" /></UiButton>
     </UiPageHeader>
 
