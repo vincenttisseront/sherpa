@@ -90,6 +90,14 @@ function openRelease(url: string) {
 }
 const composeText = ref('')
 const savingCompose = ref(false)
+// « docker run » → Compose par Ollama (proposé dans l'éditeur, jamais déployé directement).
+const { available: composeGenAvailable } = useOllamaFeature('compose-gen')
+const runOpen = ref(false)
+function useGenerated({ compose, variables }: { compose: string, variables: string[] }) {
+  composeText.value = compose
+  sourceMode.value = 'compose'
+  toast.info(`Compose placé dans l'éditeur : le relire${variables.length ? `, renseigner ${variables.join(', ')}` : ''}, puis l'analyser`)
+}
 // Modèles : catalogue (Compose + variables) et enregistrement du Compose saisi comme modèle de la plateforme.
 const pickerOpen = ref(false)
 const tplForm = ref<{ name: string, description: string } | null>(null)
@@ -453,7 +461,7 @@ async function deploy() {
         <p v-if="current?.release && composeText === current.composeText" class="muted small">Compose de la release #{{ current.release.number }}{{ current.release.active ? ' (active)' : ' (dernière tentée)' }} : le modifier puis l'analyser.</p>
         <p v-else-if="current?.composeText" class="small"><UiButton size="sm" variant="ghost" @click="fromCurrent">Repartir du Compose de la release #{{ current.release!.number }}</UiButton></p>
         <p v-if="current?.otherFiles && composeText === current.composeText" class="warn-note small">La release #{{ current.release!.number }} venait d'une archive de {{ current.otherFiles + 1 }} fichiers : un Compose saisi ne reprend pas les autres fichiers (montés ou construits). Déposer plutôt la nouvelle archive (onglet Archive).</p>
-        <p class="small"><UiButton size="sm" data-testid="template-open" @click="pickerOpen = true">Partir d'un modèle…</UiButton> <span class="muted">PostgreSQL, Redis, Grafana, WordPress… ou les modèles enregistrés par votre équipe.</span></p>
+        <p class="small"><UiButton size="sm" data-testid="template-open" @click="pickerOpen = true">Partir d'un modèle…</UiButton> <span class="muted">PostgreSQL, Redis, Grafana, WordPress… ou les modèles enregistrés par votre équipe.</span> <UiButton v-if="composeGenAvailable" size="sm" variant="ghost" data-testid="compose-gen-open" @click="runOpen = true">Depuis un « docker run »…</UiButton></p>
         <textarea v-model="composeText" class="input mono compose-text" rows="18" spellcheck="false" aria-label="Contenu du fichier Compose" placeholder="services:&#10;  web:&#10;    image: …" />
         <p class="muted small">Les mots de passe se déclarent en variables (<code>${NOM}</code>), à renseigner en variables secrètes à l'étape suivante.</p>
         <div class="tpl-actions">
@@ -467,6 +475,7 @@ async function deploy() {
           <div class="tpl-actions"><UiButton type="submit" size="sm" variant="primary" :loading="savingTpl" :disabled="tplForm.name.length < 2">Enregistrer</UiButton><UiButton size="sm" variant="ghost" @click="tplForm = null">Annuler</UiButton></div>
         </form>
         <TemplatePicker v-model:open="pickerOpen" @apply="applyTemplate" />
+        <ComposeFromRun v-if="composeGenAvailable" v-model:open="runOpen" :target-id="targetId" @use="useGenerated" />
       </template>
       <template v-else-if="!upload">
         <p v-if="current?.otherFiles" class="muted small">Release #{{ current.release!.number }} : archive de {{ current.otherFiles + 1 }} fichiers. Déposer la nouvelle version de l'archive, ou <a href="#" @click.prevent="fromCurrent">partir de son seul Compose</a>.</p>

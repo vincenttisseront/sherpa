@@ -151,3 +151,23 @@ export interface NlSearchDto {
   ignored: string[]
   meta: { model: string, durationMs: number }
 }
+
+/** « docker run » → Compose : la commande à convertir (une seule) pour une cible, dont l'analyse revalide le résultat. */
+export const composeGenInput = z.object({
+  targetId: z.uuid(),
+  command: z.string().trim().min(10, 'Coller une commande « docker run »').max(4000, 'Commande trop longue (4000 caractères maximum)'),
+})
+
+export interface ComposeGenDto {
+  /** Compose proposé ; null si le modèle n'a rien produit d'exploitable. Jamais déployé automatiquement. */
+  compose: string | null
+  notes: string[]
+  /** Variables que le Compose référence à la place de valeurs sensibles : leurs valeurs ne sont jamais renvoyées. */
+  variables: { name: string, known: boolean }[]
+  /** Écarts entre la commande et le Compose (ajouts, oublis) relevés sans le modèle. */
+  fidelity: string[]
+  /** Résultat de l'analyse Compose de la cible ; null si elle n'a pas pu être lancée. */
+  analysis: { ok: boolean, issues: import('./analysis').ComposeIssue[] } | null
+  structured: boolean
+  meta: AiReportDto['meta']
+}

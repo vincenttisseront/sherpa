@@ -17,7 +17,7 @@ export interface AssistAudit {
   withQuestion?: boolean
 }
 
-export async function auditedAssist<T extends AiReportDto>(event: H3Event, user: AuthUser, info: AssistAudit, run: () => Promise<T>): Promise<T> {
+export async function auditedAssist<T extends { meta: AiReportDto['meta'] }>(event: H3Event, user: AuthUser, info: AssistAudit, run: () => Promise<T>): Promise<T> {
   const base = {
     actorUserId: user.id,
     actorLabel: user.email,

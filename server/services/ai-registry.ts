@@ -9,7 +9,7 @@
  */
 import { z } from 'zod'
 import { createError } from 'h3'
-import { type AiReportDto, analysisExplainInput, type OllamaFeature, logAnalysisFocus } from '../../shared/schemas/ollama'
+import { type AiReportDto, analysisExplainInput, type ComposeGenDto, composeGenInput, type OllamaFeature, logAnalysisFocus } from '../../shared/schemas/ollama'
 import { METRIC_RANGES } from '../../shared/schemas/metrics'
 import { remediationSubject } from '../../shared/schemas/remediation'
 import type { Permission, PermissionScope } from '../../shared/utils/permissions'
@@ -18,6 +18,7 @@ import { schema } from '../db/client'
 import { type AuthUser, canOn } from '../utils/auth'
 import type { Progress } from '../utils/progress'
 import { analyzeContainerMetrics, diagnoseDeploymentFailure, explainAnalysisBlockers, explainProxies, loadVulnerabilityScan, summarizeTechSupport, triageVulnerabilities } from './ai-assist'
+import { composeFromDockerRun } from './ai-compose'
 import { explainReleaseNotes } from './ai-release-notes'
 import { deploymentScope } from './deployments'
 import { liveEndpoints } from './live'
@@ -29,17 +30,17 @@ import { connectionFor } from './servers'
 export interface ResolvedAssist {
   scope: PermissionScope
   audit: { targetType: string, targetId: string, serverId?: string | null, environmentId?: string | null, projectId?: string | null }
-  run: (progress: Progress) => Promise<AiReportDto>
+  run: (progress: Progress) => Promise<AiReportDto | ComposeGenDto>
 }
 
 export interface AssistSpec {
   permission: Permission
-  input: z.ZodType<{ focus?: string }>
+  input: z.ZodType<object>
   resolve: (input: never, user: AuthUser) => Promise<ResolvedAssist>
 }
 
 /** Associe le type du corps validé à `resolve` sans exposer de `any` au registre. */
-function define<S extends z.ZodType<{ focus?: string }>>(spec: { permission: Permission, input: S, resolve: (input: z.infer<S>, user: AuthUser) => Promise<ResolvedAssist> }): AssistSpec {
+function define<S extends z.ZodType<object>>(spec: { permission: Permission, input: S, resolve: (input: z.infer<S>, user: AuthUser) => Promise<ResolvedAssist> }): AssistSpec {
   return spec as unknown as AssistSpec
 }
 
@@ -172,6 +173,15 @@ const ASSISTS: Partial<Record<OllamaFeature, AssistSpec>> = {
       const t = await getTargetOr404(targetId)
       const scope = targetScope(t)
       return { scope, audit: { targetType: 'project_target', targetId, ...scope }, run: progress => explainReleaseNotes(t, { service, tag, focus }, progress) }
+    },
+  }),
+  'compose-gen': define({
+    permission: 'deployment:execute',
+    input: composeGenInput,
+    resolve: async ({ targetId, command }) => {
+      const t = await getTargetOr404(targetId)
+      const scope = targetScope(t)
+      return { scope, audit: { targetType: 'project_target', targetId, ...scope }, run: progress => composeFromDockerRun(t, command, progress) }
     },
   }),
   'analysis-blockers': define({

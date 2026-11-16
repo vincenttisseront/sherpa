@@ -18,5 +18,5 @@ export default defineEventHandler(async (event) => {
   const input = await readValidated(event, spec.input)
   const target = await spec.resolve(input as never, user)
   await requirePermission(event, spec.permission, target.scope)
-  return auditedAssist(event, user, { feature, ...target.audit, withQuestion: !!input.focus }, () => target.run(requestProgress(event)))
+  return auditedAssist(event, user, { feature, ...target.audit, withQuestion: 'focus' in input && !!input.focus }, () => target.run(requestProgress(event)))
 })

@@ -384,6 +384,65 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
     expect(await narrateDigest(events, 'weekly', from, to)).toBeNull()
   })
 
+  it('docker run → Compose : valeurs sensibles jamais envoyées, écarts relevés, analyse de la cible', async () => {
+    const { composeFromDockerRun } = await import('../../server/services/ai-compose')
+    const { getTargetOr404 } = await import('../../server/services/projects')
+    const { assistFor } = await import('../../server/services/ai-registry')
+    const { encryptSecret } = await import('../../server/utils/crypto')
+    const { envelope, keyId } = encryptSecret('t')
+    const [sec] = await dbm.db().insert(dbm.schema.secrets).values({ purpose: 'agent_secret', envelope, keyId }).returning()
+    const [server] = await dbm.db().insert(dbm.schema.portainerServers).values({ name: 'srv-gen', url: 'https://g.test', tokenSecretId: sec!.id } as never).returning()
+    const [ep] = await dbm.db().insert(dbm.schema.serverEndpoints).values({ serverId: server!.id, portainerEndpointId: 1, name: 'local', type: 'docker_standalone', enabled: true } as never).returning()
+    const [env] = await dbm.db().select().from(dbm.schema.environments).where(eq(dbm.schema.environments.key, 'staging'))
+    const [p] = await dbm.db().insert(dbm.schema.projects).values({ slug: 'gen', name: 'Gen' }).returning()
+    const [row] = await dbm.db().insert(dbm.schema.projectTargets).values({ projectId: p!.id, endpointId: ep!.id, environmentId: env!.id, stackName: 'gen-staging' } as never).returning()
+    const t = await getTargetOr404(row!.id)
+
+    const cmd = 'docker run -d --name cache --restart unless-stopped -p 127.0.0.1:6379:6379 -v redisdata:/data -e REDIS_PASSWORD=hunter2-valeur-secrete -e TZ=Europe/Paris redis:7'
+    const good = (extra = '') => 'services:\n  cache:\n    image: redis:7\n    restart: unless-stopped\n    ports:\n      - "127.0.0.1:6379:6379"\n    volumes:\n      - redisdata:/data\n    environment:\n      REDIS_PASSWORD: ${REDIS_PASSWORD}\n      TZ: Europe/Paris\n' + extra + 'volumes:\n  redisdata:\n'
+    mock.reply = JSON.stringify({ compose: good(), notes: ['Mot de passe : password=hunter2hunter2'] })
+    const r = await composeFromDockerRun(t, cmd)
+    const sent = lastPrompt()
+    expect(sent).not.toContain('hunter2-valeur-secrete')
+    expect(sent).toContain('-e REDIS_PASSWORD=${REDIS_PASSWORD}')
+    expect(sent).toContain('-e TZ=Europe/Paris')
+    expect(mock.calls[0]!.req.format).toBeTruthy()
+    expect(r.compose).toContain('REDIS_PASSWORD: ${REDIS_PASSWORD}')
+    expect(r.fidelity).toEqual([])
+    expect(r.variables).toEqual([{ name: 'REDIS_PASSWORD', known: false }])
+    expect(r.analysis).not.toBeNull()
+    expect(r.analysis!.issues.some(i => i.code === 'paths.missing' || i.severity === 'info' || i.severity === 'warning' || i.severity === 'error')).toBe(true)
+    expect(JSON.stringify(r)).not.toContain('hunter2')
+    expect(r.meta.sentLines).toBeGreaterThan(3)
+
+    // Un Compose qui ajoute un service privilégié et un port : écarts relevés, jamais présentés comme conformes.
+    mock.reply = JSON.stringify({ compose: good('    privileged: true\n').replace('      - "127.0.0.1:6379:6379"\n', '      - "6379:6379"\n') })
+    const bad = await composeFromDockerRun(t, cmd)
+    expect(bad.fidelity).toEqual(expect.arrayContaining(['privileged ajouté par le modèle', 'Port 127.0.0.1:6379:6379 de la commande absent du Compose']))
+    expect(bad.analysis?.ok).toBe(false)
+    expect(bad.analysis?.issues.map(i => i.code)).toContain('service.privileged')
+
+    // Réponse inexploitable : aucun Compose proposé.
+    mock.reply = 'Je ne peux pas.'
+    expect(await composeFromDockerRun(t, cmd)).toMatchObject({ compose: null, structured: false, fidelity: [] })
+
+    // Commande invalide ou dangereuse : refusée avant tout appel au modèle.
+    mock.calls.length = 0
+    for (const bad of ['docker ps', 'docker run nginx; id', 'docker run --inconnue nginx']) await expect(composeFromDockerRun(t, bad)).rejects.toMatchObject({ statusCode: 422 })
+    expect(mock.calls).toHaveLength(0)
+
+    // Fonction non cochée : rien n'est envoyé. Corps du registre strict.
+    await svc.saveOllamaSettings({ ...base, features: ['logs'] }, null)
+    await expect(composeFromDockerRun(t, cmd)).rejects.toMatchObject({ statusCode: 409 })
+    expect(mock.calls).toHaveLength(0)
+    await svc.saveOllamaSettings({ ...base }, null)
+    const spec = assistFor('compose-gen')
+    expect(spec.permission).toBe('deployment:execute')
+    expect(spec.input.safeParse({ targetId: row!.id, command: 'docker run nginx', sourceYaml: 'x' }).success).toBe(true)
+    expect(spec.input.safeParse({ targetId: row!.id, command: 'court' }).success).toBe(false)
+    expect(spec.input.safeParse({ targetId: 'x', command: 'docker run nginx' }).success).toBe(false)
+  })
+
   it('supprime le jeton à la demande', async () => {
     const { settings, credentialChanged } = await svc.saveOllamaSettings({ ...base, clearToken: true }, null)
     expect(settings.hasToken).toBe(false)
