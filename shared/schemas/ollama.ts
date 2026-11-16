@@ -13,12 +13,12 @@ export const OLLAMA_FEATURES = [
   { key: 'analysis-blockers', label: 'Explication des blocages d\'analyse', hint: 'Ports, volumes, domaines, Compose refusés' },
   { key: 'vulnerabilities', label: 'Tri des vulnérabilités', hint: 'Priorités et texte d\'issue pour une image' },
   { key: 'release-notes', label: 'Notes de version avant mise à niveau', hint: 'Résumé des releases GitHub, changements cassants' },
-  { key: 'nl-search', label: 'Recherche en langage naturel', hint: 'Audit : une phrase devient des filtres' },
+  { key: 'nl-search', label: 'Recherche en langage naturel', hint: 'Audit et déploiements : une phrase devient des filtres' },
   { key: 'digest', label: 'Synthèse des résumés', hint: 'Paragraphe de synthèse en tête des résumés périodiques de notification (titres d\'évènements seulement)' },
   { key: 'proxy', label: 'Explication des reverse proxies', hint: 'Routes et domaines d\'un hôte' },
   { key: 'support', label: 'Synthèse du tech support', hint: 'Symptôme, hypothèses, ordre de vérification' },
   { key: 'metrics', label: 'Lecture de l\'historique des ressources', hint: 'CPU, mémoire, redémarrages d\'un conteneur' },
-  { key: 'compose-gen', label: 'Du « docker run » au Compose', hint: 'Compose conforme, revalidé par l\'analyse' },
+  { key: 'compose-gen', label: 'Du « docker run » au Compose', hint: 'Compose proposé, comparé à la commande et revalidé par l\'analyse' },
 ] as const
 export type OllamaFeature = (typeof OLLAMA_FEATURES)[number]['key']
 export const OLLAMA_FEATURE_KEYS = OLLAMA_FEATURES.map(f => f.key) as [OllamaFeature, ...OllamaFeature[]]

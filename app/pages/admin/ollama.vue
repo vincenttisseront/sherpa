@@ -65,12 +65,12 @@ async function save() {
       <div>
         <h2>Connecteur Ollama</h2>
         <p class="muted small">
-          Un serveur <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a> (modèles de langage locaux) alimente des fonctions d'assistance : analyse de logs, diagnostic d'un déploiement en échec, tri des vulnérabilités, résumé d'activité…
+          Un serveur <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a> (modèles de langage locaux) alimente des fonctions d'assistance : analyse de logs, diagnostic d'un déploiement en échec, tri des vulnérabilités, recherche en langage naturel, synthèse des résumés, Compose à partir d'un « docker run »…
           Les secrets sont masqués avant tout envoi, rien n'est conservé, et la réponse du modèle est seulement affichée (aucune action n'est lancée). Cette analyse est une aide à la lecture : à vérifier avant d'agir.
         </p>
       </div>
       <form class="stack" autocomplete="off" @submit.prevent="save">
-        <UiSwitch v-model="form.enabled" label="Analyse de logs par Ollama activée" />
+        <UiSwitch v-model="form.enabled" label="Assistance par Ollama activée" />
         <UiField label="Adresse du serveur" for="ol-url" :error="errors.baseUrl" hint="Ex. http://ollama:11434 (réseau interne) ; derrière un proxy inverse, l'adresse complète avec son préfixe" required>
           <input id="ol-url" v-model.trim="form.baseUrl" class="input mono" placeholder="http://localhost:11434">
         </UiField>

@@ -1,9 +1,9 @@
-import { requireAnyPermission } from '../../utils/auth'
+import { requireUser } from '../../utils/auth'
 import { ollamaStatus } from '../../services/ollama'
 
-defineRouteMeta({ openAPI: { tags: ['logs'], summary: 'L\'analyse de logs par Ollama est-elle disponible ? (sans l\'adresse du serveur)' } })
+defineRouteMeta({ openAPI: { tags: ['ollama'], summary: 'Les fonctions d\'assistance par Ollama sont-elles disponibles ? (activées, modèle, fonctions cochées ; sans l\'adresse du serveur). Ouvert à tout compte connecté : le droit exact est contrôlé par chaque fonction.' } })
 
-export default defineEventHandler(async (event) => {
-  await requireAnyPermission(event, 'logs:read')
+export default defineEventHandler((event) => {
+  requireUser(event)
   return ollamaStatus()
 })
