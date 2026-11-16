@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     for (const row of rows) {
       const snap = await scanEndpoint(row)
       // Empreinte sans l'horodatage : on n'envoie que les vrais changements.
-      const digest = createHash('sha1').update(JSON.stringify({ ...snap, scannedAt: 0, durationMs: 0 })).digest('hex')
+      const digest = createHash('sha256').update(JSON.stringify({ ...snap, scannedAt: 0, durationMs: 0 })).digest('hex')
       if (last.get(row.ep.id) === digest) {
         await stream.push({ event: 'alive', data: JSON.stringify({ endpointId: row.ep.id, scannedAt: snap.scannedAt }) })
         continue

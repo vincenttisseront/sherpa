@@ -58,19 +58,21 @@ export function parseProbe(text: string, names: string[], urls: string[]): { dns
   const dns: DnsAnswer[] = []
   const http: HttpAnswer[] = []
   const lines = text.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i]!
+  let i = 0
+  while (i < lines.length) {
+    const l = lines[i++]!
     const d = l.match(/^@@DNS (\S+)$/)
     if (d) {
       const body: string[] = []
       let rc = 1
-      for (i++; i < lines.length; i++) {
-        const r = lines[i]!.match(/^@@RC (\d+)$/)
+      while (i < lines.length) {
+        const line = lines[i++]!
+        const r = line.match(/^@@RC (\d+)$/)
         if (r) {
           rc = Number(r[1])
           break
         }
-        body.push(lines[i]!)
+        body.push(line)
       }
       // Les lignes « Address: ip » sans port : réponses (celle du serveur DNS porte « :53 »).
       const addresses = [...new Set(body.map(b => b.match(/^Address(?: \d+)?:\s*(\d{1,3}(?:\.\d{1,3}){3})\s*$/)?.[1]).filter((a): a is string => !!a))]
@@ -81,7 +83,7 @@ export function parseProbe(text: string, names: string[], urls: string[]): { dns
     }
     const h = l.match(/^@@HTTP (\d+) (\d+) ([\d.]+) ([\d.]+)$/)
     if (h) {
-      const err = (lines[i + 1] ?? '').replace(/^@@ERR ?/, '').trim()
+      const err = (lines[i] ?? '').replace(/^@@ERR ?/, '').trim()
       http.push({ url: urls[Number(h[1])] ?? '?', exitCode: Number(h[2]), seconds: Math.max(0, Math.round((Number(h[4]) - Number(h[3])) * 100) / 100), error: err })
     }
   }

@@ -20,13 +20,14 @@ import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from
 import { CONSOLE_HOST, isLoopbackHost } from '../../../shared/utils/console-host'
 import { redactPatterns } from '../../utils/redact'
 import { PortainerError, type SshConnection } from '../portainer/types'
+import { trimEndChars } from '../../../shared/utils/trim'
 
 const READY_TIMEOUT_MS = 15_000
 const IDLE_CLOSE_MS = 10 * 60_000
 
 /** Empreinte OpenSSH d'une clé publique d'hôte : « SHA256:<base64 sans remplissage> ». */
 export function hostKeyFingerprint(key: Buffer): string {
-  return `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`
+  return `SHA256:${trimEndChars(createHash('sha256').update(key).digest('base64'), '=')}`
 }
 
 /** Type de clé lu dans le format filaire SSH (chaîne préfixée par sa longueur). */

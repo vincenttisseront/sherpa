@@ -5,7 +5,7 @@ export default defineConfig({
   schema: './server/db/schema.ts',
   out: './server/db/migrations',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgres://platform:platform@localhost:5432/platform',
+    url: process.env.DATABASE_URL ?? 'postgres://platform:platform@localhost:5432/platform', // NOSONAR : génération des migrations en développement local uniquement
   },
   strict: true,
 })

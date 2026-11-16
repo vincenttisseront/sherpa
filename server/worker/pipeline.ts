@@ -53,6 +53,7 @@ import { downloadGithubArchives, getProjectSource } from '../services/sources'
 import { env } from '../utils/env'
 import { projectLayout } from '../utils/path-guard'
 import { Redactor } from '../utils/redact'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 type Phase = (typeof schema.logPhase.enumValues)[number]
 type Level = (typeof schema.logLevel.enumValues)[number]
@@ -725,8 +726,8 @@ async function applyNginxSites(ctx: PipelineContext, job: Job, conn: PortainerCo
   const exposures = opts.remove ? [] : fresh?.exposures ?? []
   const hosts = exposures.map(e => e.host)
   const file = nginxSiteFile(stackName)
-  const path = `${cfg.nginxConfDir.replace(/\/+$/, '')}/${file}`
-  const formatPath = `${cfg.nginxConfDir.replace(/\/+$/, '')}/${NGINX_LOG_FORMAT_FILE}`
+  const path = `${trimTrailingSlashes(cfg.nginxConfDir)}/${file}`
+  const formatPath = `${trimTrailingSlashes(cfg.nginxConfDir)}/${NGINX_LOG_FORMAT_FILE}`
   const readOne = async (pth: string) => (await p.readContainerFiles(conn, ep, h.containerId, pth, { maxBytes: 1024 * 1024, maxFiles: 1 }).catch(() => null))?.[0]?.content ?? null
   const previous = await readOne(path)
   // Format du journal d'accès de la console : défini une fois, avant les sites qui l'utilisent.

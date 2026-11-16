@@ -27,6 +27,13 @@ import type { AnalysisResult, BuildPlan, Change, ComposeIssue, Exposure, Exposur
 import { HOSTNAME_RE, MIDDLEWARE_RE, PATH_PREFIX_RE, isAllowedHost, normalizeHost } from '../../../shared/utils/domains'
 import type { WatchtowerConfig } from '../../../shared/schemas/watchtower'
 import type { HealthcheckOverride } from '../../../shared/schemas/projects'
+import { trimChars } from '../../../shared/utils/trim'
+
+/** Vrai si la référence d'image porte un tag : un « : » après le dernier « / », suivi d'au moins un caractère (sans regex : /:[^/]+$/ est quadratique). */
+function hasTag(image: string): boolean {
+  const colon = image.indexOf(':', image.lastIndexOf('/') + 1)
+  return colon !== -1 && colon < image.length - 1
+}
 
 export type { AnalysisResult, BuildPlan, Change, ComposeIssue, Exposure, ExposureReport, MountReport, PortApproval, PortReport, TraefikPolicy }
 
@@ -126,7 +133,7 @@ export function watchtowerPolicyOf(cfg: WatchtowerConfig, service: string, label
 const TRAEFIK_NETWORK_KEY = 'platform-traefik'
 
 export function routerNameFor(pattern: string, project: string, env: string, service: string): string {
-  return pattern.replace('{project}', project).replace('{env}', env).replace('{service}', service).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100)
+  return trimChars(pattern.replace('{project}', project).replace('{env}', env).replace('{service}', service).toLowerCase().replace(/[^a-z0-9-]+/g, '-'), '-').slice(0, 100)
 }
 
 const MAX_SERVICES = 30
@@ -461,7 +468,7 @@ export function analyzeCompose(rawText: string, ctx: AnalyzeContext): AnalysisRe
     }
     else {
       images[name] = svc.image
-      if (!svc.image.includes('@') && (!/:[^/]+$/.test(svc.image) || svc.image.endsWith(':latest'))) {
+      if (!svc.image.includes('@') && (!hasTag(svc.image) || svc.image.endsWith(':latest'))) {
         warn('image.latest', `Image ${svc.image} sans version figée (latest) : déploiement non reproductible`, name)
       }
     }
@@ -728,7 +735,7 @@ export function analyzeCompose(rawText: string, ctx: AnalyzeContext): AnalysisRe
         accepted = false
         reason = 'Image figée par son empreinte : aucune mise à jour possible'
       }
-      else if (policy === 'update' && (!/:[^/]+$/.test(image) || image.endsWith(':latest'))) {
+      else if (policy === 'update' && (!hasTag(image) || image.endsWith(':latest'))) {
         warn('watchtower.floating', `${name} : image flottante (${image}) mise à jour automatiquement — version imprévisible`, name)
       }
       if (!accepted) err('watchtower.service', `${name} : ${reason}`, name)

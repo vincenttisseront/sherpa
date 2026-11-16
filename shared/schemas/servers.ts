@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { tableQuery } from './common'
 import type { EnvironmentDto } from './environments'
 import { wizardEndpointInput } from './infra'
+import { trimTrailingSlashes } from '../utils/trim'
 
 export const HOST_TRANSPORTS = ['agent', 'ssh'] as const
 export type HostTransport = (typeof HOST_TRANSPORTS)[number]
@@ -17,7 +18,7 @@ const sshPort = z.coerce.number().int().min(1).max(65_535).default(22)
 /** Agent Portainer : adresse et AGENT_SECRET. */
 const agentConnectionInput = z.object({
   transport: z.literal('agent'),
-  url: z.url({ protocol: /^https?$/ }).transform(u => u.replace(/\/+$/, '')),
+  url: z.url({ protocol: /^https?$/ }).transform(u => trimTrailingSlashes(u)),
   token: z.string().min(10).max(512),
   tlsVerify: z.boolean().default(true),
   caCertPem: z.string().max(20_000).optional(),
@@ -111,7 +112,7 @@ export const serverPatch = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
-  url: z.url({ protocol: /^https?$/ }).transform(u => u.replace(/\/+$/, '')).optional(),
+  url: z.url({ protocol: /^https?$/ }).transform(u => trimTrailingSlashes(u)).optional(),
   tlsVerify: z.boolean().optional(),
   caCertPem: z.string().max(20_000).nullable().optional(),
   /** Hôte SSH : changement re-testé avec les identifiants enregistrés ; nouvel hôte ou port : empreinte à confirmer. */

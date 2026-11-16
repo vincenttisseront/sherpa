@@ -23,6 +23,8 @@ const language = ref('texte')
 
 /** Langage d'après le nom, puis d'après le contenu (ex. core.conf de Deluge : du JSON). */
 async function languageFor(name: string, text: string): Promise<{ label: string, ext: Extension }> {
+  // Détection d'après le début du contenu seulement : borne le coût des expressions régulières sur un gros fichier.
+  const sample = text.slice(0, 8192)
   const lower = name.toLowerCase()
   const base = lower.split('/').pop() ?? lower
   const ext = base.includes('.') ? base.split('.').pop()! : ''
@@ -36,14 +38,14 @@ async function languageFor(name: string, text: string): Promise<{ label: string,
   if (ext === 'toml') return legacy('TOML', async () => (await import('@codemirror/legacy-modes/mode/toml')).toml as StreamParser<unknown>)
   if (['sh', 'bash', 'zsh'].includes(ext) || /^(\.bashrc|\.profile)$/.test(base)) return legacy('Shell', async () => (await import('@codemirror/legacy-modes/mode/shell')).shell as StreamParser<unknown>)
   if (base === 'dockerfile' || base.endsWith('.dockerfile')) return legacy('Dockerfile', async () => (await import('@codemirror/legacy-modes/mode/dockerfile')).dockerFile as StreamParser<unknown>)
-  if (base.includes('nginx') || (ext === 'conf' && /^\s*(server|location|upstream|http)\s*\{/m.test(text))) return legacy('nginx', async () => (await import('@codemirror/legacy-modes/mode/nginx')).nginx as StreamParser<unknown>)
+  if (base.includes('nginx') || (ext === 'conf' && /^\s*(server|location|upstream|http)\s*\{/m.test(sample))) return legacy('nginx', async () => (await import('@codemirror/legacy-modes/mode/nginx')).nginx as StreamParser<unknown>)
   // Contenu : JSON ({ ou [), XML (<), YAML (clé: valeur sans section), sinon INI / propriétés.
-  const head = text.trimStart().slice(0, 1)
-  if (head === '{' || head === '[' && /^\s*\[\s*[{["\d]/.test(text)) return lang('JSON', async () => (await import('@codemirror/lang-json')).json())
+  const head = sample.trimStart().slice(0, 1)
+  if (head === '{' || head === '[' && /^\s*\[\s*[{["\d]/.test(sample)) return lang('JSON', async () => (await import('@codemirror/lang-json')).json())
   if (head === '<') return lang('XML', async () => (await import('@codemirror/lang-xml')).xml())
-  if (['conf', 'ini', 'cfg', 'cnf', 'properties', 'env', 'service', 'desktop'].includes(ext) || base.startsWith('.env') || /^\s*\[[^\]]+\]\s*$/m.test(text)) return legacy('INI', async () => (await import('@codemirror/legacy-modes/mode/properties')).properties as StreamParser<unknown>)
-  if (/^[\w.-]+:\s/m.test(text) && !/^\s*[\w.-]+\s*=/m.test(text)) return lang('YAML', async () => (await import('@codemirror/lang-yaml')).yaml())
-  if (/^\s*[\w.-]+\s*=/m.test(text)) return legacy('INI', async () => (await import('@codemirror/legacy-modes/mode/properties')).properties as StreamParser<unknown>)
+  if (['conf', 'ini', 'cfg', 'cnf', 'properties', 'env', 'service', 'desktop'].includes(ext) || base.startsWith('.env') || /^\s*\[[^\]]+\]\s*$/m.test(sample)) return legacy('INI', async () => (await import('@codemirror/legacy-modes/mode/properties')).properties as StreamParser<unknown>)
+  if (/^[\w.-]+:\s/m.test(sample) && !/^\s*[\w.-]+\s*=/m.test(sample)) return lang('YAML', async () => (await import('@codemirror/lang-yaml')).yaml())
+  if (/^\s*[\w.-]+\s*=/m.test(sample)) return legacy('INI', async () => (await import('@codemirror/legacy-modes/mode/properties')).properties as StreamParser<unknown>)
   return { label: 'texte', ext: [] }
 }
 

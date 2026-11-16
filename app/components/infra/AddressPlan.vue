@@ -171,7 +171,7 @@ async function bulkRun() {
         <div class="choices">
           <label class="check"><input v-model="target" type="radio" value="pool" :disabled="!data?.pool" @change="previewMove"> <span>Prochain sous-réseau libre de la plage{{ data?.pool ? ` (${data.pool.base}, /${data.pool.prefix})` : ' (aucune plage définie)' }}</span></label>
           <label class="check"><input v-model="target" type="radio" value="custom"> <span>Sous-réseau précis</span></label>
-          <input v-if="target === 'custom'" v-model.trim="custom" class="input input-sm mono" placeholder="10.210.4.0/27" @change="previewMove">
+          <input v-if="target === 'custom'" v-model.trim="custom" class="input input-sm mono" aria-label="Sous-réseau précis" placeholder="10.210.4.0/27" @change="previewMove">
         </div>
         <p v-if="busy && !preview" class="muted small">Calcul du plan…</p>
         <template v-if="preview">

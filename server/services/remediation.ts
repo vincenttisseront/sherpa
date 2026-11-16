@@ -19,6 +19,7 @@ import { env } from '../utils/env'
 import { allowedGithubApis, github } from './sources'
 import { connectionFor } from './servers'
 import { trivySettings } from './trivy'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 const REPOSITORY_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/
 
@@ -78,7 +79,7 @@ async function resolveSubject(subject: RemediationSubject): Promise<ResolvedSubj
         const builds = (rel?.analysis as { builds?: { service: string, context: string, dockerfile: string }[] } | null)?.builds ?? []
         const b = builds.find(x => t.services.includes(x.service)) ?? builds[0]
         // Contexte « . » ou « ./sous-dossier » : chemin du dépôt sans préfixe.
-        const ctx = (b?.context ?? '').replace(/^\.(\/|$)/, '').replace(/\/+$/, '')
+        const ctx = trimTrailingSlashes((b?.context ?? '').replace(/^\.(\/|$)/, ''))
         return {
           ...base,
           repo: { apiUrl: normalizeApiUrl(src.apiUrl), repository: src.repository!, origin: 'project' },

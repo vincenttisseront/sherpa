@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PathConfigInput } from '#shared/schemas/infra'
+import { trimTrailingSlashes } from '#shared/utils/trim'
 
 const props = defineProps<{ errors?: Record<string, string> }>()
 const model = defineModel<PathConfigInput>({ required: true })
@@ -26,7 +27,7 @@ const num = (v: string) => (v === '' ? null : Number(v))
     </div>
 
     <p class="muted preview">
-      Projet « exemple » → <code>{{ model.workingRoot.replace(/\/+$/, '') }}/exemple/releases/&lt;release&gt;/</code>
+      Projet « exemple » → <code>{{ trimTrailingSlashes(model.workingRoot) }}/exemple/releases/&lt;release&gt;/</code>
     </p>
 
     <div class="grid">

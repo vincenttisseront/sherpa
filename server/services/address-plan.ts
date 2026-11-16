@@ -20,6 +20,7 @@ import { createLifecycleAction } from './deploy-requests'
 import { pinSubnet } from './network-pool'
 import { getTargetOr404 } from './projects'
 import { connectionFor } from './servers'
+import { byCode } from '../../shared/utils/compare'
 
 const SYSTEM_NETWORKS = new Set(['bridge', 'host', 'none', 'docker_gwbridge', 'ingress'])
 const TRAEFIK_IMAGE = /(^|\/)traefik(:|@|$)/i
@@ -97,7 +98,7 @@ export async function addressPlan(endpointId: string): Promise<AddressPlanDto> {
       driver: n.driver,
       subnets: cidrs.map(c => c.text),
       addresses: cidrs.length ? Math.max(...cidrs.map(hosts)) : null,
-      containers: (d?.containers ?? []).map(c => c.name).sort(),
+      containers: (d?.containers ?? []).map(c => c.name).sort(byCode),
       owner,
       inPool: !!base && cidrs.length > 0 && cidrs.every(c => within(c, base)),
       issues,

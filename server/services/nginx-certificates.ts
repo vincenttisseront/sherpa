@@ -19,6 +19,7 @@ import { waitForTxt } from '../lib/dns/propagation'
 import { env } from '../utils/env'
 import { apiOf, dnsAccountRows, markDnsError } from './dns-accounts'
 import { connectionFor } from './servers'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 type DnsAccountRow = typeof schema.dnsAccounts.$inferSelect
 
@@ -252,7 +253,7 @@ export async function syncNginxCertificates(endpointId: string, log: Log = async
       // nginx classique : domaines des sites réellement écrits (une cible pas encore redéployée derrière
       // nginx n'y figure pas) ; nginx-proxy : domaines des cibles déployées.
       const hosts = cfg.provider === 'nginx'
-        ? nginxServedHosts(await portainer().readContainerFiles(conn, row.ep.portainerEndpointId, h.containerId, cfg.nginxConfDir.replace(/\/+$/, ''), { maxBytes: 4 * 1024 * 1024, maxFiles: 500 }) ?? [])
+        ? nginxServedHosts(await portainer().readContainerFiles(conn, row.ep.portainerEndpointId, h.containerId, trimTrailingSlashes(cfg.nginxConfDir), { maxBytes: 4 * 1024 * 1024, maxFiles: 500 }) ?? [])
         : targets.filter(t => proxyConfigFor(configs, t.environmentId) === cfg).flatMap(t => t.exposures.map(e => e.host))
       res.issued = await issueMissingAcme(h, cfg, hosts, async (m, level) => {
         if (level === 'warn' || level === 'error') res.errors.push(m)

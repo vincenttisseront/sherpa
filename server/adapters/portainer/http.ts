@@ -22,6 +22,7 @@ import type {
   PortainerConnection,
 } from './types'
 import { PortainerError } from './types'
+import { byCode } from '../../../shared/utils/compare'
 
 export interface HttpAdapterOptions {
   timeoutMs: number
@@ -306,7 +307,7 @@ export function createDockerOps(opts: HttpAdapterOptions, t: DockerTransport): D
         workingDir: i.Config.WorkingDir || null,
         user: i.Config.User || null,
         // Jamais les valeurs : elles contiennent souvent des secrets.
-        envKeys: (i.Config.Env ?? []).map(e => e.split('=')[0]!).sort(),
+        envKeys: (i.Config.Env ?? []).map(e => e.split('=')[0]!).sort(byCode),
         labels: i.Config.Labels ?? {},
         mounts: i.Mounts.map(m => ({ type: m.Type, source: m.Source ?? null, destination: m.Destination, rw: m.RW, name: m.Name ?? null })),
         networks: Object.entries(i.NetworkSettings.Networks ?? {}).map(([name, n]) => ({ name, ip: n.IPAddress || null, aliases: n.Aliases ?? [] })),

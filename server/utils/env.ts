@@ -4,10 +4,14 @@
  */
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
+
+/** Connexion PostgreSQL de développement local (compose.dev.yml) : refusée en production, où DATABASE_URL (+ DATABASE_PASSWORD_FILE) est obligatoire. */
+const DEV_DATABASE_URL = 'postgres://platform:platform@localhost:5432/platform' // NOSONAR : identifiants de développement, rejetés en production par env()
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  DATABASE_URL: z.string().min(1).default('postgres://platform:platform@localhost:5432/platform'),
+  DATABASE_URL: z.string().min(1).default(DEV_DATABASE_URL),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
   /** Mots de passe lus dans des fichiers (secrets Docker) et injectés dans les URL ci-dessus. */
   DATABASE_PASSWORD_FILE: z.string().optional(),
@@ -23,7 +27,7 @@ const schema = z.object({
   PORTAINER_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   DEV_AUTH_BYPASS: z.stringbool().default(false),
   /** URL publique de la plateforme (retours OIDC, liens d'invitation). */
-  APP_URL: z.url().default('http://localhost:3000').transform(u => u.replace(/\/+$/, '')),
+  APP_URL: z.url().default('http://localhost:3000').transform(u => trimTrailingSlashes(u)),
   SESSION_IDLE_MIN: z.coerce.number().int().min(5).max(24 * 60).default(60),
   SESSION_MAX_HOURS: z.coerce.number().int().min(1).max(24 * 7).default(12),
   /** Cookie de session « Secure » (HTTPS). À désactiver uniquement en développement HTTP. */
@@ -46,7 +50,7 @@ const schema = z.object({
   /** Image par défaut du sidecar Watchtower (l'administration peut en figer une autre, page Mises à jour d'images). */
   WATCHTOWER_IMAGE: z.string().default('nickfedor/watchtower:1.23.0'),
   /** URL de la plateforme vue depuis les serveurs cibles (notifications Watchtower) ; défaut : APP_URL. */
-  WATCHTOWER_HOOK_BASE_URL: z.url().optional().transform(u => u?.replace(/\/+$/, '')),
+  WATCHTOWER_HOOK_BASE_URL: z.url().optional().transform(u => (u === undefined ? undefined : trimTrailingSlashes(u))),
   /** Envoi des emails (§18). Sans SMTP_HOST, les canaux email sont refusés. */
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
@@ -86,6 +90,9 @@ export function env(): Env {
     }
     if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_AUTH_BYPASS) {
       throw new Error('DEV_AUTH_BYPASS est interdit en production')
+    }
+    if (parsed.data.NODE_ENV === 'production' && parsed.data.DATABASE_URL === DEV_DATABASE_URL) {
+      throw new Error('DATABASE_URL doit être renseignée en production (la connexion de développement est refusée)')
     }
     const e = parsed.data
     if (e.DATABASE_PASSWORD_FILE) e.DATABASE_URL = withPassword(e.DATABASE_URL, e.DATABASE_PASSWORD_FILE)

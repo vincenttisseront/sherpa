@@ -684,7 +684,7 @@ const entries = computed(() => {
 // Navigation au clavier dans la liste (grille, ligne courante en aria-activedescendant).
 const grid = ref<HTMLElement | null>(null)
 const active = ref(0)
-const gridId = `files-${Math.random().toString(36).slice(2, 8)}`
+const gridId = `files-${useId()}`
 watch(entries, (list) => {
   if (active.value >= list.length) active.value = Math.max(0, list.length - 1)
 })
@@ -1125,7 +1125,7 @@ const ICON = { dir: Folder, file: File, link: Link2, other: FileWarning } as con
               </nav>
               <span class="spacer" />
               <template v-if="current?.writable">
-                <input v-model.trim="newName" class="input input-sm mono newname" ref="newNameInput" placeholder="nom du fichier ou du dossier" aria-label="Nom du nouveau fichier ou dossier" @keydown.enter="startNew">
+                <input ref="newNameInput" v-model.trim="newName" class="input input-sm mono newname" placeholder="nom du fichier ou du dossier" aria-label="Nom du nouveau fichier ou dossier" @keydown.enter="startNew">
                 <UiButton size="sm" :disabled="!newName" @click="startNew"><Plus :size="13" /> Nouveau fichier</UiButton>
                 <UiButton size="sm" :disabled="!newName" :loading="creatingDir" @click="makeDir"><FolderPlus :size="13" /> Nouveau dossier</UiButton>
               </template>

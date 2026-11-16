@@ -2,6 +2,7 @@
 /** Politique de déploiement par environnement : validation par une autre personne et fenêtres de déploiement. */
 import type { DeployPolicyDto } from '#shared/schemas/deploy-gate'
 import { DAY_LABEL, type DeployWindow } from '#shared/utils/deploy-windows'
+import { byNumber } from '#shared/utils/compare'
 
 useHead({ title: 'Politique de déploiement' })
 const toast = useToast()
@@ -16,7 +17,7 @@ function addWindow(p: DeployPolicyDto) {
   p.windows.push({ days: [1, 2, 3, 4, 5], from: '09:00', to: '17:00' } satisfies DeployWindow)
 }
 function toggleDay(w: DeployWindow, d: number) {
-  w.days = w.days.includes(d) ? w.days.filter(x => x !== d) : [...w.days, d].sort()
+  w.days = w.days.includes(d) ? w.days.filter(x => x !== d) : [...w.days, d].sort(byNumber)
 }
 async function save(p: DeployPolicyDto) {
   saving.value = p.environmentId
@@ -54,7 +55,7 @@ async function save(p: DeployPolicyDto) {
         <h3>{{ p.environment }} <UiBadge v-if="p.isProduction" tone="danger">production</UiBadge></h3>
         <UiButton size="sm" variant="primary" :disabled="!dirty(p)" :loading="saving === p.environmentId" @click="save(p)">Enregistrer</UiButton>
       </div>
-      <label class="row"><UiSwitch v-model="p.requireApproval" :label="`Validation requise pour ${p.environment}`" /> Validation par une autre personne obligatoire</label>
+      <div class="row"><UiSwitch v-model="p.requireApproval" :label="`Validation requise pour ${p.environment}`" /> Validation par une autre personne obligatoire</div>
       <div class="row">
         <label :for="`tz-${p.environmentId}`" class="small">Fuseau horaire</label>
         <input :id="`tz-${p.environmentId}`" v-model.trim="p.timezone" class="input mono tz" spellcheck="false" placeholder="Europe/Paris">

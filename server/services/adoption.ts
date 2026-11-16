@@ -33,6 +33,7 @@ import { type TargetRow, analyzeForTarget } from './projects'
 import { endpointTopology } from './proxy'
 import { connectionFor, environmentMaps } from './servers'
 import { type StoredUpload, storeUpload } from './uploads'
+import { byCode } from '../../shared/utils/compare'
 
 const NIL = '00000000-0000-0000-0000-000000000000'
 const stackOf = (c: DockerContainer) => c.labels['com.docker.compose.project'] ?? null
@@ -65,11 +66,11 @@ export async function listAdoptable(row: EndpointRow): Promise<AdoptableStack[]>
     const t = targets.find(x => x.stack === name)
     return {
       name,
-      services: [...new Set(cs.map(c => c.labels['com.docker.compose.service']).filter((s): s is string => !!s))].sort(),
+      services: [...new Set(cs.map(c => c.labels['com.docker.compose.service']).filter((s): s is string => !!s))].sort(byCode),
       containers: cs.length,
       running: cs.filter(c => c.state === 'running').length,
-      images: [...new Set(cs.map(c => c.image))].sort(),
-      hosts: [...new Set((topo?.routes ?? []).filter(r => r.container?.stack === name && !(r.redirectsToHttps && !r.tls)).flatMap(r => r.hosts))].sort(),
+      images: [...new Set(cs.map(c => c.image))].sort(byCode),
+      hosts: [...new Set((topo?.routes ?? []).filter(r => r.container?.stack === name && !(r.redirectsToHttps && !r.tls)).flatMap(r => r.hosts))].sort(byCode),
       infrastructure: infrastructureOf(cs),
       managedBy: t ? { projectId: t.projectId, projectName: t.projectName, environment: t.environment } : null,
       composeFile: cs[0]?.labels['com.docker.compose.project.config_files'] ?? null,
@@ -206,18 +207,18 @@ async function prepare(row: EndpointRow, input: AdoptionInput, environmentId: st
   await progress.step('Synthèse', 5, total)
   const stack: AdoptableStack = {
     name: input.stack,
-    services: [...new Set(cs.map(c => c.labels['com.docker.compose.service']).filter((s): s is string => !!s))].sort(),
+    services: [...new Set(cs.map(c => c.labels['com.docker.compose.service']).filter((s): s is string => !!s))].sort(byCode),
     containers: cs.length,
     running: cs.filter(c => c.state === 'running').length,
-    images: [...new Set(cs.map(c => c.image))].sort(),
-    hosts: [...new Set(routes.flatMap(r => r.hosts))].sort(),
+    images: [...new Set(cs.map(c => c.image))].sort(byCode),
+    hosts: [...new Set(routes.flatMap(r => r.hosts))].sort(byCode),
     infrastructure: infrastructureOf(cs),
     managedBy: null,
     composeFile: cs[0]?.labels['com.docker.compose.project.config_files'] ?? null,
   }
   if (stack.infrastructure) notes.unshift({ level: 'warning', service: null, message: `Cette stack contient ${stack.infrastructure} : la reprendre la placerait sous le contrôle des déploiements de la plateforme` })
   return {
-    preview: { stack, composeText: conv.composeText, exposures: conv.exposures, variables: Object.keys(variables).sort(), notes, analysis, droppedRoutes: conv.droppedRoutes },
+    preview: { stack, composeText: conv.composeText, exposures: conv.exposures, variables: Object.keys(variables).sort(byCode), notes, analysis, droppedRoutes: conv.droppedRoutes },
     composeText: conv.composeText,
     variables,
     exposures: conv.exposures,

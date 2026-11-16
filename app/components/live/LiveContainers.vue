@@ -124,7 +124,7 @@ function asMapContainer(c: LiveContainer): MapContainer {
 }
 const drawer = computed({ get: () => !!selected.value, set: (v) => { if (!v) selected.value = null } })
 const portLabel = (p: LiveContainer['ports'][number]) => (p.publicPort ? `${p.publicPort}→${p.privatePort}` : `${p.privatePort}`)
-const uptime = (status: string) => status.replace(/\s*\((healthy|unhealthy|health: starting)\)/, '').replace(/^Up /, 'actif depuis ').replace(/^Exited \((\d+)\) /, 'arrêté (code $1) il y a ').replace(/ ago$/, '').replace(/About an? /, '1 ').replace(/seconds?/, 's').replace(/minutes?/, 'min').replace(/hours?/, 'h').replace(/days?/, 'j').replace(/weeks?/, 'sem.').replace(/months?/, 'mois')
+const uptime = (status: string) => status.replace(/ ?\((healthy|unhealthy|health: starting)\)/, '').replace(/^Up /, 'actif depuis ').replace(/^Exited \((\d+)\) /, 'arrêté (code $1) il y a ').replace(/ ago$/, '').replace(/About an? /, '1 ').replace(/seconds?/, 's').replace(/minutes?/, 'min').replace(/hours?/, 'h').replace(/days?/, 'j').replace(/weeks?/, 'sem.').replace(/months?/, 'mois')
 </script>
 
 <template>

@@ -9,6 +9,7 @@ import { db, schema } from '../db/client'
 import { type DnsApi, dnsApi } from '../lib/dns/providers'
 import { decryptSecret, encryptSecret } from '../utils/crypto'
 import { env } from '../utils/env'
+import { byCode } from '../../shared/utils/compare'
 
 type Row = typeof schema.dnsAccounts.$inferSelect
 
@@ -46,7 +47,7 @@ export async function apiOf(r: Row): Promise<DnsApi> {
 /** Zones visibles avec ces identifiants (contrôle avant enregistrement). */
 async function probe(creds: DnsCredentials): Promise<DnsCheckResult> {
   try {
-    const zones = (await dnsApi(creds, { cloudflareApi: env().ACME_DNS_CLOUDFLARE_API }).zones()).map(z => z.toLowerCase()).sort()
+    const zones = (await dnsApi(creds, { cloudflareApi: env().ACME_DNS_CLOUDFLARE_API }).zones()).map(z => z.toLowerCase()).sort(byCode)
     return { ok: true, zones, error: null }
   }
   catch (err) {

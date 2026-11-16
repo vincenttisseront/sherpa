@@ -29,7 +29,7 @@ case "${1:-up}" in
     umask 077
     dc logs app 2>/dev/null | sed -n "s/.*Jeton d'initialisation (usage unique, valable 24 h) : \([A-Za-z0-9_-]*\).*/\1/p" | tail -1 > "$DIR/setup-token"
     [ -s "$DIR/setup-token" ] || { echo "Jeton d'initialisation introuvable (instance déjà initialisée ?)" >&2; exit 1; }
-    E2E_FRESH=1 E2E_BASE_URL=http://localhost:3200 E2E_SETUP_TOKEN_FILE="$DIR/setup-token" E2E_ADMIN_PASSWORD_OUT="$DIR/admin-password" npx playwright test e2e/onboarding.spec.ts
+    E2E_FRESH=1 E2E_BASE_URL=http://localhost:3200 E2E_SETUP_TOKEN_FILE="$DIR/setup-token" E2E_ADMIN_PASSWORD_OUT="$DIR/admin-password" npm exec --no-install -- playwright test e2e/onboarding.spec.ts
     rm -f "$DIR/setup-token"
     ;;
   down) dc down -v ;;

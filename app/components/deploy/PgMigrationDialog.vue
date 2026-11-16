@@ -5,6 +5,7 @@
  */
 import type { PgMigrationPlan } from '#shared/schemas/pg-migration'
 import { DatabaseZap } from 'lucide-vue-next'
+import { trimTrailingSlashes } from '#shared/utils/trim'
 
 const props = defineProps<{ targetId: string, service: string }>()
 const open = defineModel<boolean>('open', { required: true })
@@ -17,7 +18,7 @@ watch(plan, (p) => {
   if (p?.candidates.length && !tag.value) tag.value = p.candidates.at(-1)!.tag
 }, { immediate: true })
 const target = computed(() => plan.value?.candidates.find(c => c.tag === tag.value) ?? null)
-const newPgdata = computed(() => (plan.value?.mount && target.value ? `${plan.value.mount.destination.replace(/\/+$/, '')}/pg${target.value.major}` : null))
+const newPgdata = computed(() => (plan.value?.mount && target.value ? `${trimTrailingSlashes(plan.value.mount.destination)}/pg${target.value.major}` : null))
 const confirmText = ref('')
 const busy = ref(false)
 

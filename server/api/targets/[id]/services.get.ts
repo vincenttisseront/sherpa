@@ -3,6 +3,7 @@ import { db, schema } from '../../../db/client'
 import { requirePermission } from '../../../utils/auth'
 import { idParam } from '../../../utils/validation'
 import { getTargetOr404, targetScope } from '../../../services/projects'
+import { byCode } from '../../../../shared/utils/compare'
 
 defineRouteMeta({ openAPI: { tags: ['targets'], summary: 'Services de la release active' } })
 
@@ -12,5 +13,5 @@ export default defineEventHandler(async (event): Promise<string[]> => {
   await requirePermission(event, 'project:read', targetScope(t))
   if (!t.target.currentReleaseId) return []
   const [rel] = await db().select({ images: schema.releases.images }).from(schema.releases).where(eq(schema.releases.id, t.target.currentReleaseId))
-  return Object.keys((rel?.images ?? {}) as Record<string, string>).sort()
+  return Object.keys((rel?.images ?? {}) as Record<string, string>).sort(byCode)
 })

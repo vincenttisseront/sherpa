@@ -256,6 +256,7 @@ const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.in
 
       <section v-else>
         <table class="kv">
+          <thead class="sr-only"><tr><th>Étiquette</th><th>Valeur</th></tr></thead>
           <tbody><tr v-for="(v, k) in c.labels" :key="k"><td class="mono">{{ k }}</td><td class="mono">{{ v }}</td></tr></tbody>
         </table>
       </section>

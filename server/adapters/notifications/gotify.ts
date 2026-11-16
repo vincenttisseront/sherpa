@@ -2,6 +2,7 @@
 import { gotifyConfig } from '../../../shared/schemas/notifications'
 import { postJson, trunc } from './http-notify'
 import type { NotificationAdapter, NotificationMessage } from './types'
+import { trimTrailingSlashes } from '../../../shared/utils/trim'
 
 const PRIORITY = { info: 3, warning: 5, error: 8 } as const
 
@@ -21,6 +22,6 @@ export const gotifyAdapter: NotificationAdapter = {
   kind: 'gotify',
   async send(config, message) {
     const c = gotifyConfig.parse(config)
-    await postJson('Gotify', `${c.url.replace(/\/+$/, '')}/message`, gotifyPayload(message), { 'x-gotify-key': c.token })
+    await postJson('Gotify', `${trimTrailingSlashes(c.url)}/message`, gotifyPayload(message), { 'x-gotify-key': c.token })
   },
 }

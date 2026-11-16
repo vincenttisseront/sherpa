@@ -8,6 +8,7 @@
  */
 import { Download } from 'lucide-vue-next'
 import type { ViewerLine } from '~/types/logs'
+import { byCode } from '#shared/utils/compare'
 
 const props = withDefaults(defineProps<{ deploymentId?: string, lines?: ViewerLine[], live?: boolean, height?: string }>(), { deploymentId: undefined, lines: undefined, live: true, height: '520px' })
 const toast = useToast()
@@ -44,7 +45,7 @@ const visible = computed(() => {
     && (t === null || new Date(l.ts).getTime() <= t)
     && (!q || l.message.toLowerCase().includes(q)))
 })
-const services = computed(() => [...new Set((props.lines ?? all.value).map(l => l.service).filter((s): s is string => !!s))].sort())
+const services = computed(() => [...new Set((props.lines ?? all.value).map(l => l.service).filter((s): s is string => !!s))].sort(byCode))
 const filtered = computed(() => !!(service.value || from.value || to.value || phase.value || search.value.trim() || levels.value.length !== DEFAULT_LEVELS.length || DEFAULT_LEVELS.some(l => !levels.value.includes(l))))
 const counts = computed(() => {
   const c: Record<string, number> = { debug: 0, info: 0, warn: 0, error: 0 }

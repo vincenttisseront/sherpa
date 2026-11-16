@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 /**
  * Migration de PostgreSQL vers une nouvelle version majeure, par sauvegarde puis restauration,
  * entièrement sur l'hôte (les données ne transitent jamais par la console) :
@@ -40,7 +41,7 @@ export interface PgMigrationLayout {
 export function pgLayout(mountPath: string, oldPgdata: string, user: string, targetMajor: number): PgMigrationLayout {
   for (const p of [mountPath, oldPgdata]) if (!SAFE_PATH.test(p) || p.split('/').includes('..')) throw new Error(`Chemin invalide : ${p}`)
   if (!SAFE_USER.test(user)) throw new Error(`Utilisateur PostgreSQL invalide : ${user}`)
-  const newPgdata = `${mountPath.replace(/\/+$/, '')}/pg${targetMajor}`
+  const newPgdata = `${trimTrailingSlashes(mountPath)}/pg${targetMajor}`
   if (newPgdata === oldPgdata) throw new Error(`Les données sont déjà dans ${newPgdata}`)
   return { mountPath, oldPgdata, newPgdata, user }
 }
@@ -173,7 +174,7 @@ export function restoreScript(l: PgMigrationLayout, preload = '', configFile: st
  */
 export function oldClusterRemovalScript(oldPgdata: string, newPgdata: string): string {
   for (const p of [oldPgdata, newPgdata]) if (!SAFE_PATH.test(p) || p.split('/').includes('..') || p.split('/').filter(Boolean).length < 2) throw new Error(`Chemin invalide : ${p}`)
-  const nested = newPgdata.startsWith(`${oldPgdata.replace(/\/+$/, '')}/`)
+  const nested = newPgdata.startsWith(`${trimTrailingSlashes(oldPgdata)}/`)
   return [
     'set -eu',
     `OLD='${oldPgdata}'`,

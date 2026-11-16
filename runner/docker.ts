@@ -10,6 +10,7 @@ import { pack } from 'tar-stream'
 import { PathViolation } from '../server/utils/path-guard'
 import { BuildTrace, buildkitUnavailable } from './buildkit'
 import { type HostFs, entryPath, localFs } from './host-fs'
+import { trimTrailingSlashes } from '../shared/utils/trim'
 
 export interface DockerBuildOptions {
   contextDir: string
@@ -50,12 +51,13 @@ export interface IgnoreRule { negate: boolean, re: RegExp }
 
 function patternToRegex(pattern: string): RegExp {
   let re = ''
-  for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i]!
+  let i = 0
+  while (i < pattern.length) {
+    const c = pattern[i++]!
     if (c === '*') {
-      if (pattern[i + 1] === '*') {
+      if (pattern[i] === '*') {
         // « **/ » : zéro ou plusieurs répertoires ; « ** » en fin : tout.
-        if (pattern[i + 2] === '/') {
+        if (pattern[i + 1] === '/') {
           re += '(?:.*/)?'
           i += 2
         }
@@ -72,12 +74,12 @@ function patternToRegex(pattern: string): RegExp {
       re += '[^/]'
     }
     else if (c === '[') {
-      const end = pattern.indexOf(']', i + 1)
+      const end = pattern.indexOf(']', i)
       if (end < 0) re += '\\['
       else {
-        const body = pattern.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')
+        const body = pattern.slice(i, end).replace(/^!/, '^').replace(/\\/g, '\\\\')
         re += `[${body}]`
-        i = end
+        i = end + 1
       }
     }
     else {
@@ -90,7 +92,7 @@ function patternToRegex(pattern: string): RegExp {
 export function parseDockerignore(text: string): IgnoreRule[] {
   return text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')).map((l) => {
     const negate = l.startsWith('!')
-    const p = posix.normalize((negate ? l.slice(1) : l).trim().replace(/^\/+/, '')).replace(/\/+$/, '')
+    const p = trimTrailingSlashes(posix.normalize((negate ? l.slice(1) : l).trim().replace(/^\/+/, '')))
     return { negate, re: patternToRegex(p) }
   })
 }

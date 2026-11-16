@@ -6,6 +6,7 @@
  */
 import { z } from 'zod'
 import { environmentKey } from './common'
+import { trimTrailingSlashes } from '../utils/trim'
 
 const absolutePath = z.string().trim().min(2).max(1024).startsWith('/', 'Chemin absolu attendu')
 
@@ -181,7 +182,7 @@ export type FieldErrors = Record<string, string>
 // ---------------------------------------------------------------------------
 
 export const runnerConfigInput = z.object({
-  url: z.url({ protocol: /^https?$/ }).transform(u => u.replace(/\/+$/, '')),
+  url: z.url({ protocol: /^https?$/ }).transform(u => trimTrailingSlashes(u)),
   caCertPem: z.string().trim().max(20_000).refine(v => v.includes('-----BEGIN CERTIFICATE-----'), 'Certificat PEM attendu').nullable().default(null),
   serverName: z.string().trim().regex(/^[a-z0-9.-]{1,253}$/i, 'Nom d\'hôte invalide').nullable().default(null),
   maxConcurrentBuilds: z.number().int().min(1).max(16).default(2),

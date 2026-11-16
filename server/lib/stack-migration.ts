@@ -10,6 +10,7 @@
  * Les montages système (fuseau horaire, sockets, /proc…) ne sont jamais copiés.
  */
 import type { MigrationItem } from '../../shared/schemas/migration'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 export interface StackMount {
   service: string
@@ -31,7 +32,7 @@ export interface MigrationLayout {
 
 const SYSTEM = ['/proc', '/sys', '/dev', '/run', '/var/run', '/var/lib/docker', '/etc', '/usr', '/boot', '/lib', '/bin', '/sbin']
 
-const within = (p: string, dir: string) => p === dir || p.startsWith(`${dir.replace(/\/+$/, '')}/`)
+const within = (p: string, dir: string) => p === dir || p.startsWith(`${trimTrailingSlashes(dir)}/`)
 
 export type PlanItem = Omit<MigrationItem, 'sizeBytes' | 'isFile' | 'note'>
 
@@ -54,7 +55,7 @@ export function migrationItems(mounts: readonly StackMount[], from: MigrationLay
     }
     if (m.type !== 'bind' || !m.source) continue
     // Docker Desktop présente les dossiers partagés de la machine sous /host_mnt.
-    const src = m.source.replace(/^\/host_mnt(?=\/)/, '').replace(/\/+$/, '') || '/'
+    const src = trimTrailingSlashes(m.source.replace(/^\/host_mnt(?=\/)/, '')) || '/'
     if (src.endsWith('.sock') || src === '/' || SYSTEM.some(s => within(src, s))) {
       ignored.push({ source: src, service: m.service, reason: 'chemin système de l\'hôte (présent sur la cible)' })
       continue

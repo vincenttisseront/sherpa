@@ -14,6 +14,7 @@ import { env } from '../utils/env'
 import { getUpdateEngine } from './update-engine'
 import { getKeyring } from '../utils/crypto'
 import { globalAdminUserIds } from './admin'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 export type CheckStatus = 'ok' | 'warning' | 'error' | 'todo' | 'info'
 export interface CheckItem { key: string, label: string, status: CheckStatus, detail: string, link?: string }
@@ -184,7 +185,7 @@ async function github(): Promise<CheckSection> {
     .innerJoin(schema.projects, eq(schema.projects.id, schema.projectSources.projectId)).where(eq(schema.projectSources.kind, 'github'))
   if (!sources.length) items.push({ key: 'sources', label: 'Projets sur GitHub', status: 'info', detail: 'Aucun projet n\'utilise encore une source GitHub' })
   for (const { s, project, projectId } of sources) {
-    const blocked = !apis.includes(s.apiUrl.replace(/\/+$/, ''))
+    const blocked = !apis.includes(trimTrailingSlashes(s.apiUrl))
     items.push({
       key: `src-${s.id}`, label: `${project} — ${s.repository}`, link: `/projects/${projectId}`,
       status: blocked ? 'error' : 'info',

@@ -39,7 +39,7 @@ const FRESH: Record<string, { label: string, tone: 'success' | 'warning' | 'neut
   local: { label: 'image locale', tone: 'neutral' },
   pinned: { label: 'figée', tone: 'info' },
 }
-const uptime = (s: string) => s.replace(/\s*\((healthy|unhealthy|health: starting)\)/, '').replace(/^Up /, 'depuis ').replace(/^Exited \((\d+)\) /, 'arrêté (code $1) il y a ').replace(/ ago$/, '').replace(/About an? /, '1 ').replace(/seconds?/, 's').replace(/minutes?/, 'min').replace(/hours?/, 'h').replace(/days?/, 'j').replace(/weeks?/, 'sem.')
+const uptime = (s: string) => s.replace(/ ?\((healthy|unhealthy|health: starting)\)/, '').replace(/^Up /, 'depuis ').replace(/^Exited \((\d+)\) /, 'arrêté (code $1) il y a ').replace(/ ago$/, '').replace(/About an? /, '1 ').replace(/seconds?/, 's').replace(/minutes?/, 'min').replace(/hours?/, 'h').replace(/days?/, 'j').replace(/weeks?/, 'sem.')
 
 const pending = ref<string | null>(null)
 const filesOf = ref<string | null>(null)

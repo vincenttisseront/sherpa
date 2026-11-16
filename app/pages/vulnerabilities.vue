@@ -8,6 +8,7 @@ import { SEVERITIES, SEVERITY_LABEL, type Finding, type ImageScanDto, type ScanC
 import { ChevronDown, ChevronRight, Eraser, GitPullRequest, RefreshCw, Settings, ShieldAlert } from 'lucide-vue-next'
 import { compareImageVersions, imageTechno } from '#shared/utils/image-techno'
 import { REMEDIATION_STATE_LABEL, type RemediationRequestDto, type RemediationSubject, imageSubjectKey, sourceSubjectKey } from '#shared/schemas/remediation'
+import { byCode } from '#shared/utils/compare'
 
 useHead({ title: 'Vulnérabilités' })
 const { hasAny } = useAuth()
@@ -30,7 +31,7 @@ onBeforeUnmount(() => clearInterval(timer))
 const server = ref('')
 const minSeverity = ref<'' | 'CRITICAL' | 'HIGH'>('')
 const q = ref('')
-const servers = computed(() => [...new Set(data.value?.images.map(i => i.serverName) ?? [])].sort())
+const servers = computed(() => [...new Set(data.value?.images.map(i => i.serverName) ?? [])].sort(byCode))
 const images = computed(() => (data.value?.images ?? []).filter(i =>
   (!server.value || i.serverName === server.value)
   && (!minSeverity.value || i.counts.CRITICAL || (minSeverity.value === 'HIGH' && i.counts.HIGH))
@@ -75,13 +76,13 @@ const groups = computed<TechnoGroup[]>(() => {
       key,
       versions,
       tags: [...new Set(versions.map(v => imageTechno(v.image).version))],
-      servers: [...new Set(versions.map(v => v.serverName))].sort(),
+      servers: [...new Set(versions.map(v => v.serverName))].sort(byCode),
       projects: new Set(versions.flatMap(v => v.targets.map(t => t.targetId))).size,
       worst: ok.reduce<ImageScanDto | null>((w, v) => (!w || worse(v, w) ? v : w), null),
       fixable: Math.max(0, ...ok.map(v => v.fixable)),
       failed: versions.length - ok.length,
       scanning: versions.some(v => v.scanState),
-      scannedAt: versions.map(v => v.scannedAt).sort().at(-1)!,
+      scannedAt: versions.map(v => v.scannedAt).sort(byCode).at(-1)!,
     }
   }).sort((a, b) => (a.worst && b.worst ? (worse(a.worst, b.worst) ? -1 : worse(b.worst, a.worst) ? 1 : 0) : a.worst ? -1 : b.worst ? 1 : 0) || a.key.localeCompare(b.key))
 })

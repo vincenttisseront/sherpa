@@ -12,6 +12,7 @@ import type { EndpointRow } from './live'
 import { proxyConfigFor } from './nginx-certificates'
 import type { TargetRow } from './projects'
 import { connectionFor } from './servers'
+import { byCode } from '../../shared/utils/compare'
 
 export interface AccessLogQuery {
   tail: number
@@ -76,7 +77,7 @@ export async function readAccessLogs(row: Pick<EndpointRow, 'server' | 'ep'>, co
     scannedLines: lines.length,
     unparsed,
     formats,
-    hosts: [...new Set(all.map(e => e.host).filter((h): h is string => !!h))].sort(),
+    hosts: [...new Set(all.map(e => e.host).filter((h): h is string => !!h))].sort(byCode),
     entries: filtered.slice(-q.limit).reverse(),
     stats: accessStats(filtered),
     errors: errors.filter(e => !hostFilter || !e.host || hostFilter.has(e.host)).slice(-50).reverse(),

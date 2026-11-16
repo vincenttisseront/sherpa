@@ -20,6 +20,7 @@ import { runnerFor } from '../adapters/runner'
 import { projectLayout } from '../utils/path-guard'
 import { connectionFor } from './servers'
 import { markResolvedRequests } from './remediation'
+import { byCode } from '../../shared/utils/compare'
 export { blockingFindings } from '../lib/trivy'
 
 const SETTINGS_KEY = 'trivy'
@@ -323,7 +324,7 @@ export async function runTrivyScan(input: { endpointId?: string, targetId?: stri
       for (const item of items) {
         run.current = `${row.server.name} · ${item.image}`
         await saveRun(run)
-        const targets = [...item.targets.values()].map(t => ({ ...t, services: [...t.services].sort() }))
+        const targets = [...item.targets.values()].map(t => ({ ...t, services: [...t.services].sort(byCode) }))
         const d = input.deploy
         const reused = d ? await reuseRecentScan(row.ep.id, item.imageId, targets, d) : null
         if (reused) {

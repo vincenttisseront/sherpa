@@ -26,7 +26,9 @@ export function composeNames(text: string): string[] {
     const doc = YAML.parse(text) as { services?: Record<string, { image?: unknown }> } | null
     return Object.entries(doc?.services ?? {}).flatMap(([name, svc]) => {
       const image = typeof svc?.image === 'string' ? svc.image : null
-      return image ? [name, image, image.replace(/[:@].*$/, ''), image.replace(/[:@].*$/, '').split('/').pop()!] : [name]
+      if (!image) return [name]
+      const bare = image.split(/[:@]/, 1)[0]!
+      return [name, image, bare, bare.split('/').pop()!]
     })
   }
   catch {

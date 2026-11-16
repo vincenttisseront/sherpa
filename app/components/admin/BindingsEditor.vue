@@ -76,5 +76,6 @@ async function remove(b: Binding) {
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .list li { display: flex; align-items: center; gap: var(--space-2); }
 .small { font-size: 12.5px; margin: 0; }
-.add { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) auto; gap: var(--space-2); align-items: center; }
+.add { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.add > .input { flex: 1 1 150px; min-width: 150px; }
 </style>

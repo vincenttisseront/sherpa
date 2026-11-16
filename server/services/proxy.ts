@@ -134,7 +134,7 @@ async function probeOther(kind: ProbedProxy['kind'], c: TopoContainer, read: Rea
       else if (/\.conf$/.test(f.path)) {
         configFiles.push(f.path)
         sites.push(...parseNginx(f.content, f.path))
-        for (const m of f.content.matchAll(/^\s*ssl_certificate\s+([^;\s]+)\s*;/gm)) certs.add(m[1]!)
+        for (const m of f.content.matchAll(/^[ \t]*ssl_certificate\s+([^;\s]+)\s*;/gm)) certs.add(m[1]!)
       }
     }
   }

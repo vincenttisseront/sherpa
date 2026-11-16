@@ -22,6 +22,7 @@ import { FilePathError, LIST_OUTPUT, MAX_TEXT_BYTES, MAX_UPLOAD_BYTES, copyScrip
 import { stackOfTarget } from './diagnostic'
 import type { TargetRow } from './projects'
 import { HELPER_IMAGE, sideOf } from './stack-migration'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 async function context(t: TargetRow, service: string) {
   const side = await sideOf(t.endpoint.id, t.env.id)
@@ -454,7 +455,7 @@ export async function zipServiceFiles(t: TargetRow, service: string, mount: stri
     const ex = extract()
     ex.on('entry', (h, entry, next) => {
       // L'archive de Docker a pour racine le dernier élément du chemin (« m » pour la racine du montage).
-      const name = [root, ...h.name.replace(/\/+$/, '').split('/').slice(1)].join('/')
+      const name = [root, ...trimTrailingSlashes(h.name).split('/').slice(1)].join('/')
       const base = { name, mode: (h.mode ?? 0o644) & 0o7777, mtime: h.mtime ?? new Date() }
       const add = h.type === 'file' || h.type === 'contiguous-file'
         ? zip.add({ ...base, kind: 'file', data: entry as unknown as Readable })

@@ -5,6 +5,8 @@
  */
 import { createHash, createHmac } from 'node:crypto'
 import { type DnsCredentials, OVH_ENDPOINTS } from '../../../shared/schemas/dns'
+import { byCode } from '../../../shared/utils/compare'
+import { trimTrailingSlashes } from '../../../shared/utils/trim'
 
 type Fetch = typeof fetch
 
@@ -39,7 +41,7 @@ const hmac = (key: string | Buffer, s: string) => createHmac('sha256', key).upda
 // ---------------------------------------------------------------------------
 
 function cloudflare(token: string, o: Required<Pick<DnsApiOptions, 'fetch'>> & DnsApiOptions): DnsApi {
-  const base = (o.cloudflareApi ?? 'https://api.cloudflare.com/client/v4').replace(/\/+$/, '')
+  const base = trimTrailingSlashes(o.cloudflareApi ?? 'https://api.cloudflare.com/client/v4')
   const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     const res = await o.fetch(`${base}${path}`, {
       method,
@@ -82,7 +84,7 @@ function cloudflare(token: string, o: Required<Pick<DnsApiOptions, 'fetch'>> & D
 // ---------------------------------------------------------------------------
 
 export function ovhSignature(applicationSecret: string, consumerKey: string, method: string, url: string, body: string, timestamp: number): string {
-  return `$1$${createHash('sha1').update(`${applicationSecret}+${consumerKey}+${method}+${url}+${body}+${timestamp}`, 'utf8').digest('hex')}`
+  return `$1$${createHash('sha1').update(`${applicationSecret}+${consumerKey}+${method}+${url}+${body}+${timestamp}`, 'utf8').digest('hex')}` // NOSONAR : SHA-1 imposé par la signature de l'API OVH ($1$…)
 }
 
 function ovh(c: Extract<DnsCredentials, { provider: 'ovh' }>, o: Required<Pick<DnsApiOptions, 'fetch'>> & DnsApiOptions): DnsApi {
@@ -145,7 +147,7 @@ export function sigV4(input: { method: string, path: string, query: Record<strin
   const amzDate = input.now.toISOString().replace(/[:-]|\.\d{3}/g, '')
   const date = amzDate.slice(0, 8)
   const payloadHash = sha256(input.body)
-  const query = Object.keys(input.query).sort().map(k => `${enc(k)}=${enc(input.query[k]!)}`).join('&')
+  const query = Object.keys(input.query).sort(byCode).map(k => `${enc(k)}=${enc(input.query[k]!)}`).join('&')
   const signedHeaders = 'host;x-amz-content-sha256;x-amz-date'
   const canonical = [input.method, input.path, query, `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`, signedHeaders, payloadHash].join('\n')
   const scope = `${date}/${region}/${service}/aws4_request`

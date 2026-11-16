@@ -155,6 +155,7 @@ const NET = { allowed: { label: 'Autorisé', tone: 'success' }, created: { label
           <h3>Ports publiés</h3>
           <p v-if="!analysis.ports.length" class="muted small">Aucun port publié sur l'hôte.</p>
           <table v-else>
+            <thead class="sr-only"><tr><th>Service</th><th>Port</th><th>Exposition</th></tr></thead>
             <tbody>
               <tr v-for="(p, k) in analysis.ports" :key="k">
                 <td>{{ p.service }}</td>

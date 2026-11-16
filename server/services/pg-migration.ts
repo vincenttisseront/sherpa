@@ -21,6 +21,7 @@ import { stackOfTarget } from './diagnostic'
 import { currentRelease, tagsOf, withTag } from './image-upgrade'
 import type { TargetRow } from './projects'
 import { connectionFor } from './servers'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 const DEFAULT_PGDATA = '/var/lib/postgresql/data'
 
@@ -85,7 +86,7 @@ export async function pgMigrationPlan(t: TargetRow, service: string): Promise<Pg
   const env = Object.fromEntries(cfg.env.map(e => [e.slice(0, e.indexOf('=')), e.slice(e.indexOf('=') + 1)]))
   plan.pgdata = env.PGDATA || DEFAULT_PGDATA
   plan.user = env.POSTGRES_USER || 'postgres'
-  const within = (child: string, parent: string) => child === parent || child.startsWith(`${parent.replace(/\/+$/, '')}/`)
+  const within = (child: string, parent: string) => child === parent || child.startsWith(`${trimTrailingSlashes(parent)}/`)
   const m = cfg.mounts.filter(x => within(plan.pgdata!, x.destination)).sort((a, b) => b.destination.length - a.destination.length)[0]
   if (!m || !(m.name || m.source)) blockers.push(`Données (${plan.pgdata}) hors de tout volume : elles disparaîtraient avec le conteneur, migration impossible`)
   else plan.mount = { type: m.type, source: (m.type === 'volume' ? m.name : m.source) ?? '', destination: m.destination }

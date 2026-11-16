@@ -13,6 +13,7 @@ import { flatFromLabels } from '../lib/proxy/flat'
 import { caddyLabelRoutes } from '../lib/proxy/others'
 import { interpretDynamic, parseRule } from '../lib/proxy/traefik'
 import { connectionFor } from './servers'
+import { byCode } from '../../shared/utils/compare'
 
 const TTL_MS = 2_000
 const cache = new Map<string, { at: number, value: Promise<LiveEndpoint> }>()
@@ -34,7 +35,7 @@ export function labelHosts(labels: Record<string, string>): string[] {
     for (const r of interpretDynamic(flatFromLabels(labels, 'traefik.')).routers) for (const h of parseRule(r.rule).hosts) hosts.add(h)
   }
   for (const r of caddyLabelRoutes(labels)) for (const h of r.hosts) hosts.add(h)
-  return [...hosts].sort()
+  return [...hosts].sort(byCode)
 }
 
 export function healthOf(status: string): LiveHealth {

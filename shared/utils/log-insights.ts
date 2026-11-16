@@ -109,7 +109,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'oom',
-    re: /out of memory|cannot allocate memory|JavaScript heap out of memory|OutOfMemoryError|\bKilled$/i,
+    re: /out of memory|cannot allocate memory|JavaScript heap out of memory|OutOfMemoryError|(?:\bKilled$)/i,
     severity: 'error',
     title: 'Mémoire insuffisante',
     explain: 'Le processus n\'a pas obtenu la mémoire demandée (limite du conteneur ou de l\'hôte).',
@@ -213,7 +213,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'go-panic',
-    re: /^panic: |goroutine \d+ \[running\]/,
+    re: /(?:^panic: )|goroutine \d+ \[running\]/,
     severity: 'error',
     title: 'Plantage du programme (panic Go)',
     explain: 'Le programme (écrit en Go) s\'est arrêté sur une erreur inattendue ; la ligne « panic: » donne la raison.',

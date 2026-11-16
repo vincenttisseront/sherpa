@@ -8,6 +8,7 @@
  * Le secret lui-même ne circule jamais.
  */
 import { type KeyObject, createHash, generateKeyPairSync, sign } from 'node:crypto'
+import { trimEndChars } from '../../../shared/utils/trim'
 
 export const AGENT_SIGNATURE_HEADER = 'X-PortainerAgent-Signature'
 export const AGENT_PUBLIC_KEY_HEADER = 'X-PortainerAgent-PublicKey'
@@ -25,7 +26,7 @@ function keys() {
 
 /** Signature du secret, telle que l'agent la vérifie (ECDSA avec MD5). */
 export function signAgentSecret(secret: string, privateKey: KeyObject = keys().privateKey): string {
-  return sign('md5', Buffer.from(secret, 'utf8'), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64').replace(/=+$/, '')
+  return trimEndChars(sign('md5', Buffer.from(secret, 'utf8'), { key: privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64'), '=')
 }
 
 export function agentHeaders(secret: string): Record<string, string> {

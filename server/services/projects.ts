@@ -18,6 +18,7 @@ import { initOnlyHint } from '../../shared/utils/variables'
 import { effectiveWatchtowerImage } from './update-engine'
 import { allocateSubnets, composeNetworkKeys } from './network-pool'
 import { profileScope, resolveTargetProfile } from './watchtower-profiles'
+import { byCode } from '../../shared/utils/compare'
 
 export async function getTargetOr404(id: string) {
   const [r] = await db().select({
@@ -110,7 +111,7 @@ export async function lastActivationAt(target: { id: string, currentReleaseId: s
 /** Variables modifiées après le dernier déploiement en service. */
 export function variablesNotDeployed(meta: Record<string, { updatedAt: string }> | null, deployedAt: Date | null): string[] {
   if (!deployedAt || !meta) return []
-  return Object.entries(meta).filter(([, m]) => new Date(m.updatedAt) > deployedAt).map(([name]) => name).sort()
+  return Object.entries(meta).filter(([, m]) => new Date(m.updatedAt) > deployedAt).map(([name]) => name).sort(byCode)
 }
 
 export function publicVariables(vars: Record<string, Variable>, meta: Record<string, { updatedAt: string }> | null = null, deployedAt: Date | null = null) {

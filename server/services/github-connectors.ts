@@ -12,6 +12,7 @@ import { type DeployedImage, analyzeGithub } from '../lib/github-watch'
 import { decryptSecret, encryptSecret } from '../utils/crypto'
 import { emitNotification } from './notifications'
 import { allowedGithubApis, github } from './sources'
+import { byCode } from '../../shared/utils/compare'
 
 type Row = typeof schema.githubConnectors.$inferSelect
 
@@ -180,7 +181,7 @@ export async function scanGithubConnector(id: string): Promise<GithubScanSnapsho
     repos = [...new Set([
       ...packages.map(p => p.pkg.repository).filter((x): x is string => !!x),
       ...sources.filter(s => s.repository && normalizeApiUrl(s.apiUrl) === r.apiUrl).map(s => s.repository!),
-    ].filter(x => x.toLowerCase().startsWith(`${r.owner.toLowerCase()}/`)))].sort()
+    ].filter(x => x.toLowerCase().startsWith(`${r.owner.toLowerCase()}/`)))].sort(byCode)
   }
   const artifacts: { repository: string, list: GithubArtifact[] }[] = []
   for (const repository of repos) {

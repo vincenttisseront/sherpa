@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { tableQuery } from './common'
+import { trimTrailingSlashes } from '../utils/trim'
 
 export const userListQuery = tableQuery.extend({
   status: z.enum(['invited', 'active', 'suspended', 'locked', 'expired']).optional(),
@@ -43,7 +44,7 @@ export const idpInput = z.object({
   key: z.string().regex(/^[a-z0-9-]{2,50}$/, 'minuscules, chiffres, tirets'),
   kind: z.enum(['keycloak', 'okta', 'oidc']),
   name: z.string().trim().min(2).max(100),
-  issuerUrl: z.url({ protocol: /^https?$/ }).transform(u => u.replace(/\/+$/, '')),
+  issuerUrl: z.url({ protocol: /^https?$/ }).transform(u => trimTrailingSlashes(u)),
   clientId: z.string().trim().min(1).max(200),
   /** Absent : inchangé. */
   clientSecret: z.string().min(1).max(500).optional(),

@@ -20,6 +20,7 @@ const rows = computed(() => ONBOARDING_STEPS.filter(s => s !== 'done').map((s) =
 <template>
   <div class="step">
     <table class="table">
+      <thead class="sr-only"><tr><th>Étape</th><th>État</th><th>Résumé</th></tr></thead>
       <tbody>
         <tr v-for="r in rows" :key="r.step">
           <td><strong>{{ r.label }}</strong></td>

@@ -40,7 +40,7 @@ export function adaptiveCard(m: NotificationMessage) {
     attachments: [{
       contentType: 'application/vnd.microsoft.card.adaptive',
       content: {
-        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json', // NOSONAR : identifiant de schéma Adaptive Cards, jamais requêté
         type: 'AdaptiveCard',
         version: '1.4',
         msteams: { width: 'Full' },

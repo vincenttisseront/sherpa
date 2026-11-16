@@ -25,6 +25,7 @@ import { listProfiles } from './watchtower-profiles'
 import { diagnoseTarget, stackOfTarget } from './diagnostic'
 import { type TargetRow, targetVariables } from './projects'
 import { connectionFor, environmentMaps } from './servers'
+import { byCode } from '../../shared/utils/compare'
 
 const SERVICE_LOG_LINES = 100
 const HELPER_IMAGE = process.env.HOST_HELPER_IMAGE || 'busybox:1.37'
@@ -133,7 +134,7 @@ export async function techSupportReport(t: TargetRow, opts: { logs: boolean, by:
         const hc = cfg.healthcheck
         kv('    healthcheck', hc ? `${redactor.redact(hc.test.join(' '))}${hcTimings(hc)}` : null)
         // Environnement : noms seulement (les valeurs peuvent être des secrets).
-        kv('    environnement', cfg.env.map(e => e.split('=')[0]).sort().join(', '))
+        kv('    environnement', cfg.env.map(e => e.split('=')[0]!).sort(byCode).join(', '))
         for (const n of cfg.networks) networks.add(n.name)
       }
     }
@@ -143,7 +144,7 @@ export async function techSupportReport(t: TargetRow, opts: { logs: boolean, by:
     const stackIds = new Set(containers.map(c => c.id))
     const byIp = new Map<string, { name: string, network: string, inStack: boolean }>()
     const details: NetworkDetail[] = []
-    for (const name of [...networks].sort()) {
+    for (const name of [...networks].sort(byCode)) {
       const n = await p.inspectNetwork(conn, epId, name).catch(() => null)
       line(`- ${name} : ${n ? `${n.driver}${n.internal ? ', interne' : ''} · ${n.ipam.config.map(c => c.subnet).join(', ') || 'sous-réseau inconnu'} · ${n.containers.length} conteneur(s)${n.containers.some(c => !stackIds.has(c.id)) ? `, dont ${n.containers.filter(c => !stackIds.has(c.id)).length} hors stack (réseau partagé)` : ''}` : 'illisible'}`)
       if (!n) continue
@@ -161,7 +162,7 @@ export async function techSupportReport(t: TargetRow, opts: { logs: boolean, by:
     }
 
     // Noms que la stack s'attend à joindre : ses services, et les hôtes cités par l'environnement.
-    const services = [...new Set(containers.map(c => c.service).filter((s): s is string => !!s))].sort()
+    const services = [...new Set(containers.map(c => c.service).filter((s): s is string => !!s))].sort(byCode)
     const wantedOf = (cfg: ContainerConfig | null) => [...new Set([...services, ...hostnamesFromEnv(cfg?.env ?? [])])].slice(0, 20)
     const wanted = new Set(infos.flatMap(i => wantedOf(i.cfg)))
 
@@ -279,7 +280,7 @@ export async function techSupportReport(t: TargetRow, opts: { logs: boolean, by:
 
   // --- Configuration ---
   section('Configuration : variables')
-  const names = Object.keys(vars).sort()
+  const names = Object.keys(vars).sort(byCode)
   if (!names.length) line('Aucune variable')
   for (const n of names) line(`${n} = ${vars[n]!.secret ? '•••••• (secrète)' : redactor.redact(vars[n]!.value)}`)
 
@@ -580,7 +581,7 @@ export async function globalTechSupportReport(user: AuthUser): Promise<string> {
 
   section('Configuration (environnement)')
   const e = env() as Record<string, unknown>
-  for (const k of Object.keys(e).sort()) {
+  for (const k of Object.keys(e).sort(byCode)) {
     const v = e[k]
     kv(k, v === undefined ? null : SENSITIVE_ENV.test(k) && !k.endsWith('_FILE') ? '•••••• (définie)' : String(v))
   }

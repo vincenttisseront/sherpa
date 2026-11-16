@@ -44,3 +44,15 @@ describe('secrets en ligne de commande et dans les URL', () => {
     expect(redactPatterns('/api/watchtower/profile-hook/0697624c-23fa-4cc8-bcc2-76b95e128c25/abcdefghijklmnopqrstuvwxyz')).not.toContain('abcdefghijklmnop')
   })
 })
+
+describe('masquage : lignes pathologiques', () => {
+  it('traite en temps linéaire une longue suite de « - » (journal d\'un conteneur)', () => {
+    const line = `${'-'.repeat(200_000)}x`
+    const t0 = performance.now()
+    redactPatterns(line)
+    expect(performance.now() - t0).toBeLessThan(500)
+  })
+  it('masque toujours les options de ligne de commande à secret', () => {
+    expect(redactPatterns('run --db-password hunter2 --aws-secret-access-key=abc123')).not.toMatch(/hunter2|abc123/)
+  })
+})

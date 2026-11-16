@@ -7,6 +7,7 @@
  */
 import type { DeployOption } from '#shared/schemas/projects'
 import { FolderTree, Lock, Network } from 'lucide-vue-next'
+import { trimTrailingSlashes } from '#shared/utils/trim'
 
 useHead({ title: 'Nouveau projet' })
 const toast = useToast()
@@ -55,11 +56,11 @@ watch(() => form.endpointId, () => {
 })
 
 // Chemin proposé : <runtimeRoot>/<projet>, tant qu'il n'a pas été saisi à la main.
-const suggestedPath = computed(() => (env.value?.roots && form.slug ? `${env.value.roots.runtimeRoot.replace(/\/+$/, '')}/${form.slug}` : ''))
+const suggestedPath = computed(() => (env.value?.roots && form.slug ? `${trimTrailingSlashes(env.value.roots.runtimeRoot)}/${form.slug}` : ''))
 watch(suggestedPath, (p) => {
   if (!form.pathTouched) form.projectPath = p
 }, { immediate: true })
-const cleanPath = computed(() => form.projectPath.trim().replace(/\/+$/, ''))
+const cleanPath = computed(() => trimTrailingSlashes(form.projectPath.trim()))
 const layout = computed(() => {
   const r = env.value?.roots
   if (!r || !form.slug) return null
@@ -72,7 +73,7 @@ const pathProblem = computed(() => {
   const r = env.value?.roots
   if (!p.startsWith('/')) return 'Chemin absolu attendu'
   if (/(^|\/)\.\.?(\/|$)/.test(p)) return 'Segments . et .. interdits'
-  if (r && ![r.workingRoot, r.runtimeRoot].some(root => p.startsWith(`${root.replace(/\/+$/, '')}/`))) return `Doit se trouver sous ${r.runtimeRoot} ou ${r.workingRoot}`
+  if (r && ![r.workingRoot, r.runtimeRoot].some(root => p.startsWith(`${trimTrailingSlashes(root)}/`))) return `Doit se trouver sous ${r.runtimeRoot} ou ${r.workingRoot}`
   return null
 })
 

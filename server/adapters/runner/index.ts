@@ -13,6 +13,7 @@ import { createHttpRunner } from './http'
 import { createMockRunner } from './mock'
 import { createSshRunner } from './ssh'
 import type { TargetRunner } from './types'
+import { byCode } from '../../../shared/utils/compare'
 
 export class RunnerNotConfigured extends Error {
   constructor() {
@@ -76,7 +77,7 @@ export async function runnerFor(endpointId: string): Promise<TargetRunner> {
 /** Racines autorisées d'un endpoint : celles de ses configurations de chemins (tous environnements). */
 export async function endpointRoots(endpointId: string): Promise<string[]> {
   const rows = await db().select().from(schema.pathConfigs).where(eq(schema.pathConfigs.endpointId, endpointId))
-  return [...new Set(rows.flatMap(r => [r.workingRoot, r.buildRoot, r.tmpRoot, r.runtimeRoot]))].sort()
+  return [...new Set(rows.flatMap(r => [r.workingRoot, r.buildRoot, r.tmpRoot, r.runtimeRoot]))].sort(byCode)
 }
 
 /** Runner par SSH si le serveur de l'endpoint est joint en SSH, sinon null. */

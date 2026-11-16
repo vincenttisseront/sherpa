@@ -23,6 +23,7 @@ import { connectionFor } from './servers'
 import { effectiveWatchtowerImage } from './update-engine'
 import type { TargetRow } from './projects'
 import type { WatchtowerReport } from './watchtower'
+import { byCode } from '../../shared/utils/compare'
 
 type Profile = typeof schema.watchtowerProfiles.$inferSelect
 
@@ -247,7 +248,7 @@ async function excludedContainers(p: Profile, conn: Awaited<ReturnType<typeof co
   return (await portainer().listContainers(conn, epId))
     .filter(c => stacks.has(c.labels['com.docker.compose.project'] ?? ''))
     .map(c => c.names[0]!.replace(/^\//, ''))
-    .sort()
+    .sort(byCode)
 }
 
 /** Déploie (ou met à jour) le Watchtower du profil sur l'hôte. */

@@ -14,6 +14,7 @@ import { redactPatterns } from '../utils/redact'
 import { type TargetRow, stackNameFor } from './projects'
 import { freshnessOf } from './image-freshness'
 import { connectionFor } from './servers'
+import { byCode } from '../../shared/utils/compare'
 
 const TAIL = 120
 
@@ -39,7 +40,7 @@ export async function diagnoseTarget(t: TargetRow, opts: { logs: boolean }): Pro
   // Services suspendus ou non gérés : ni attendus, ni signalés absents.
   const aside = new Set([...Object.keys(t.target.composeOverrides?.suspendedServices ?? {}), ...Object.keys(t.target.composeOverrides?.excludedServices ?? {})])
   const expected = Object.keys(rel?.images ?? {}).filter(s => !aside.has(s))
-  const names = [...new Set([...expected, ...containers.map(c => c.service ?? c.name)])].sort()
+  const names = [...new Set([...expected, ...containers.map(c => c.service ?? c.name)])].sort(byCode)
   const allStopped = containers.length > 0 && containers.every(c => !c.running)
   const ctx = { projectId: t.project.id, endpointId: t.endpoint.id, stack, allStopped }
 

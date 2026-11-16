@@ -5,6 +5,7 @@
  * (français ou anglais). Fonctions pures.
  */
 import { type Finding, SEVERITIES, type Severity, type SeverityCounts } from '../../shared/schemas/trivy'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 export type Lang = 'fr' | 'en'
 
@@ -138,7 +139,7 @@ export function remediationBranch(now = new Date()): string {
 
 /** Interface web d'une API GitHub (api.github.com → github.com ; GHES …/api/v3 → hôte). */
 export function webUrlOf(apiUrl: string): string {
-  const u = apiUrl.replace(/\/+$/, '')
+  const u = trimTrailingSlashes(apiUrl)
   if (/^https:\/\/api\.github\.com$/i.test(u)) return 'https://github.com'
   return u.replace(/\/api\/v3$/i, '')
 }

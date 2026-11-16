@@ -21,6 +21,7 @@ import { PROXY_DEFAULTS } from '../../shared/schemas/infra'
 import { upsertTraefikConfig } from './infra-config'
 import type { EndpointRow } from './live'
 import { connectionFor, portainerErrorMessage, rediscover } from './servers'
+import { byCode } from '../../shared/utils/compare'
 
 type Row = typeof schema.managedProxies.$inferSelect
 
@@ -40,11 +41,11 @@ export async function getManagedProxy(endpointId: string): Promise<ManagedProxyD
   if (!r) return { config: null, dnsEnvNames: [], status: 'none', pending: false, appliedAt: null, lastError: null }
   return {
     config: r.config,
-    dnsEnvNames: Object.keys(await dnsEnv(r)).sort(),
+    dnsEnvNames: Object.keys(await dnsEnv(r)).sort(byCode),
     status: r.status as ManagedProxyDto['status'],
     // Configuration ou certificats importés différents de ceux en service.
-    pending: JSON.stringify(r.config) !== JSON.stringify(r.appliedConfig) || JSON.stringify(await expectedApplied(endpointId)) !== JSON.stringify([...r.appliedCertificates].sort())
-      || JSON.stringify((await routesForApply(endpointId)).applied) !== JSON.stringify([...r.appliedRoutes].sort()),
+    pending: JSON.stringify(r.config) !== JSON.stringify(r.appliedConfig) || JSON.stringify(await expectedApplied(endpointId)) !== JSON.stringify([...r.appliedCertificates].sort(byCode))
+      || JSON.stringify((await routesForApply(endpointId)).applied) !== JSON.stringify([...r.appliedRoutes].sort(byCode)),
     appliedAt: r.appliedAt?.toISOString() ?? null,
     lastError: r.lastError,
   }
@@ -108,7 +109,7 @@ export async function previewManagedProxy(row: EndpointRow): Promise<ManagedProx
   const routes = await routesForApply(row.ep.id)
   if (!c.acme.enabled && !tls.certs.length) warnings.push('Ni ACME ni certificat importé : Traefik servira son certificat auto-signé par défaut')
   return {
-    composeText: managedTraefikCompose(c, Object.keys(env).sort(), tls.certs, routes.routes),
+    composeText: managedTraefikCompose(c, Object.keys(env).sort(byCode), tls.certs, routes.routes),
     networksToCreate: c.networks.filter(n => !networks.some(x => x.name === n)),
     conflicts,
     warnings,

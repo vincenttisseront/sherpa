@@ -19,6 +19,7 @@ import { formatBytes } from '../../shared/utils/format'
 import { MAX_COMPOSE_READ, type TargetRow, analyzeForTarget } from './projects'
 import { MAX_ENV_FILE, collectEnvFiles } from './env-files'
 import { type StoredUpload, storeUpload } from './uploads'
+import { byCode } from '../../shared/utils/compare'
 
 let client: ReturnType<typeof createGithubClient> | undefined
 export function allowedGithubApis(): string[] {
@@ -181,7 +182,7 @@ export async function previewGithub(t: TargetRow, opts: { refType?: 'branch' | '
     const composeText = await gh.file(src, commit.sha, composePath, MAX_COMPOSE_READ)
     const env = await collectEnvFiles(composeText, composePath, files, p => gh.file(src, commit.sha, p, MAX_ENV_FILE))
     const prefix = s.subdirectory ? `${validateRelativeEntry(s.subdirectory)}/` : ''
-    const composeFiles = [...files].filter(f => f.startsWith(prefix) && isComposeFile(f)).sort()
+    const composeFiles = [...files].filter(f => f.startsWith(prefix) && isComposeFile(f)).sort(byCode)
     const analysis = await analyzeForTarget(t, { composeText, composePath, files, releaseSlug: opts.releaseSlug, portApprovals: opts.approvals, exposures: opts.exposures, sourceKind: 'github', envFileKeys: env.keys })
     analysis.issues.push(...await imageSourceIssues(analysis.images, analysis.builds.map(b => b.service)))
     if (tree.truncated) analysis.issues.push({ severity: 'warning', code: 'github.tree_truncated', message: 'Dépôt très volumineux : la liste des fichiers est incomplète, la présence des Dockerfiles n\'a pu être vérifiée qu\'en partie' })

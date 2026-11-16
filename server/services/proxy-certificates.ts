@@ -9,6 +9,7 @@ import { db, schema } from '../db/client'
 import { CertificateRejected, certificateCovers, parseCertificateBundle } from '../lib/proxy/certificates'
 import { type ManagedCert, certEnvNames } from '../lib/proxy/managed'
 import { decryptSecret, encryptSecret } from '../utils/crypto'
+import { byCode } from '../../shared/utils/compare'
 
 const EXPIRING_MS = 21 * 864e5
 
@@ -24,7 +25,7 @@ export function certState(notAfter: Date, now = Date.now()): ProxyCertificateDto
 
 async function exposedHosts(endpointId: string): Promise<string[]> {
   const rows = await db().select({ exposures: schema.projectTargets.exposures }).from(schema.projectTargets).where(eq(schema.projectTargets.endpointId, endpointId))
-  return [...new Set(rows.flatMap(r => r.exposures.map(e => e.host.toLowerCase())))].sort()
+  return [...new Set(rows.flatMap(r => r.exposures.map(e => e.host.toLowerCase())))].sort(byCode)
 }
 
 export async function listCertificates(endpointId: string): Promise<ProxyCertificateDto[]> {

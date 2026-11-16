@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { Agent, fetch } from 'undici'
 import { redactPatterns } from '../utils/redact'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 export interface GithubSource {
   apiUrl: string
@@ -61,7 +62,7 @@ export function downloadHostsFor(apiUrl: string): string[] {
 }
 
 export function normalizeApiUrl(raw: string): string {
-  return raw.trim().replace(/\/+$/, '')
+  return trimTrailingSlashes(raw.trim())
 }
 
 export function createGithubClient(opts: GithubClientOptions) {

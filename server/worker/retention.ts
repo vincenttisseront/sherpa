@@ -28,7 +28,9 @@ async function purgeTable(table: string, column: string, retentionDays: number):
   }
 }
 
-export async function purgeExpired(retentionDays: number, actor: { id?: string | null, label: string } = { label: 'system' }): Promise<Record<Key, number>> {
+const SYSTEM_ACTOR: { id?: string | null, label: string } = { label: 'system' }
+
+export async function purgeExpired(retentionDays: number, actor: { id?: string | null, label: string } = SYSTEM_ACTOR): Promise<Record<Key, number>> {
   const out = {} as Record<Key, number>
   for (const t of RETAINED) out[t.key] = await purgeTable(t.table, t.column, retentionDays)
   await audit({ actorUserId: actor.id ?? null, actorLabel: actor.label, action: 'retention.purge', outcome: 'success', details: { retentionDays, ...out } })

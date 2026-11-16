@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { scheduleInput } from './deploy-gate'
 import { environmentKey, slug, tableQuery } from './common'
+import { trimChars } from '../utils/trim'
 
 export const projectCreateInput = z.object({
   slug,
@@ -227,7 +228,7 @@ export const sourceInput = z.object({
   repository: z.string().trim().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/, 'Format attendu : organisation/depot').nullable().default(null),
   refType: z.enum(['branch', 'tag', 'commit']).nullable().default(null),
   ref: z.string().trim().max(250).nullable().default(null),
-  subdirectory: z.string().trim().max(512).nullable().default(null).transform(v => v?.replace(/^\/+|\/+$/g, '') || null),
+  subdirectory: z.string().trim().max(512).nullable().default(null).transform(v => (v ? trimChars(v, '/') : '') || null),
   composePath: z.string().trim().min(1).max(512).default('compose.yml'),
   submodules: z.boolean().default(false),
   /** Absent : inchangé ; null : supprimé. */

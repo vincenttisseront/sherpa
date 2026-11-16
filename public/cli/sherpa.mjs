@@ -14,6 +14,14 @@ import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const VERSION = '1.0.0'
+
+/** Retire les « / » de fin (boucle linéaire : /\/+$/ est quadratique sur une longue suite de « / »). */
+const trimSlashes = (s) => {
+  let end = s.length
+  while (end > 0 && s[end - 1] === '/') end--
+  return s.slice(0, end)
+}
+
 const TERMINAL_OK = ['HEALTHY']
 const TERMINAL_KO = ['DEGRADED', 'FAILED', 'ROLLED_BACK', 'VALIDATION_FAILED', 'CANCELLED']
 const STATUS_LABEL = { QUEUED: 'en file', VALIDATING: 'validation', PREPARING_FILES: 'préparation des fichiers', BUILDING: 'construction des images', DEPLOYING: 'déploiement de la stack', HEALTH_CHECKING: 'vérification de santé', HEALTHY: 'opérationnel', DEGRADED: 'dégradé', FAILED: 'échec', ROLLING_BACK: 'retour arrière', ROLLED_BACK: 'retour à la version précédente', VALIDATION_FAILED: 'validation refusée', CANCELLED: 'annulé' }
@@ -86,7 +94,7 @@ function readConfig() {
 
 /** Accès : options, puis variables d'environnement, puis fichier de configuration. */
 export function resolveAccess(flags, env = process.env, file = readConfig()) {
-  const url = String(flags.url ?? env.SHERPA_URL ?? file.url ?? '').replace(/\/+$/, '')
+  const url = trimSlashes(String(flags.url ?? env.SHERPA_URL ?? file.url ?? ''))
   const token = String(flags.token ?? env.SHERPA_TOKEN ?? file.token ?? '')
   if (!url) throw new CliError('Console inconnue : --url, SHERPA_URL ou « sherpa login »', 2)
   if (!/^https?:\/\//.test(url)) throw new CliError(`Adresse invalide : ${url}`, 2)
@@ -176,7 +184,7 @@ async function waitDeployment(call, id, { timeoutS, json }) {
 
 const commands = {
   async login(flags) {
-    const url = String(flags.url ?? '').replace(/\/+$/, '')
+    const url = trimSlashes(String(flags.url ?? ''))
     const token = String(flags.token ?? '')
     if (!/^https?:\/\//.test(url) || !token.startsWith('shp_')) throw new CliError('Usage : sherpa login --url https://console --token shp_…', 2)
     const me = await client({ url, token })('/api/auth/me')

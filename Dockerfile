@@ -7,7 +7,7 @@ RUN --mount=type=secret,id=npm_ca,required=false \
     if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
     npm ci --ignore-scripts
 COPY . .
-RUN npx nuxt prepare && npm run build && npm run build:worker
+RUN ./node_modules/.bin/nuxt prepare && npm run build && npm run build:worker
 
 FROM node:24-alpine AS deps
 WORKDIR /app

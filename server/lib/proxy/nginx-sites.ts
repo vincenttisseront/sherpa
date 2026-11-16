@@ -6,6 +6,8 @@
  * Fonction pure : le fichier est écrit puis nginx rechargé par le worker.
  */
 import { aliasFor } from '../compose/unique-aliases'
+import { byCode } from '../../../shared/utils/compare'
+import { trimTrailingSlashes } from '../../../shared/utils/trim'
 
 export interface NginxTlsFiles { certificate: string, key: string }
 
@@ -46,7 +48,7 @@ export const NGINX_ACME_WEBROOT = '/var/www/platform-acme'
 
 /** Fichiers d'un domaine dans le dossier des certificats (« *.exemple.fr » : « _wildcard.exemple.fr »). */
 export function nginxCertFiles(dir: string, host: string): NginxTlsFiles {
-  const base = `${dir.replace(/\/+$/, '')}/${host.toLowerCase().replace(/^\*\./, '_wildcard.').replace(/[^a-z0-9_.-]/g, '-')}`
+  const base = `${trimTrailingSlashes(dir)}/${host.toLowerCase().replace(/^\*\./, '_wildcard.').replace(/[^a-z0-9_.-]/g, '-')}`
   return { certificate: `${base}.crt`, key: `${base}.key` }
 }
 
@@ -104,7 +106,7 @@ export function renewThreshold(c: CertCandidate): number {
 /** Domaines servis par les fichiers de sites de la console (server_name des platform-*.conf). */
 export function nginxServedHosts(files: readonly { path: string, content: string }[]): string[] {
   return [...new Set(files.filter(f => /(^|\/)platform-[^/]+\.conf$/.test(f.path))
-    .flatMap(f => [...f.content.matchAll(/^\s*server_name\s+([^;]+);/gm)].flatMap(m => m[1]!.trim().split(/\s+/))))].sort()
+    .flatMap(f => [...f.content.matchAll(/^[ \t]*server_name\s+([^;]+);/gm)].flatMap(m => m[1]!.trim().split(/\s+/))))].sort(byCode)
 }
 
 /** Domaines sans certificat propre (exact ou générique, hors défaut) encore valable au-delà du seuil de renouvellement. */

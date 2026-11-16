@@ -34,9 +34,12 @@ describe('export CSV', () => {
 })
 
 describe('webhook Teams', () => {
+  const savedDatabaseUrl = process.env.DATABASE_URL
   afterEach(() => {
     delete process.env.NOTIFY_WEBHOOK_ALLOWED_HOSTS
     process.env.NODE_ENV = 'test'
+    if (savedDatabaseUrl === undefined) delete process.env.DATABASE_URL
+    else process.env.DATABASE_URL = savedDatabaseUrl
     resetEnvCache()
   })
   it('n\'accepte que les hôtes autorisés (motifs *.domaine)', () => {
@@ -49,6 +52,7 @@ describe('webhook Teams', () => {
   })
   it('refuse HTTP en production, les identifiants dans l\'URL et les hôtes inconnus', () => {
     process.env.NODE_ENV = 'production'
+    process.env.DATABASE_URL = 'postgres://platform@db.example.test:5432/platform'
     process.env.NOTIFY_WEBHOOK_ALLOWED_HOSTS = '*.logic.azure.com'
     resetEnvCache()
     expect(checkWebhookUrl('https://prod-1.westeurope.logic.azure.com/workflows/x')).toBeNull()

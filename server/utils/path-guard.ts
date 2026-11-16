@@ -8,6 +8,7 @@
  * que seul l'hôte peut effectuer.
  */
 import { posix } from 'node:path'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 /** Préfixes système interdits, en plus de `/` lui-même. */
 export const SENSITIVE_PREFIXES = [
@@ -76,7 +77,7 @@ export function normalizeAbsolute(input: string): string {
   if (!input.startsWith('/')) throw new PathViolation(input, 'chemin relatif')
   if (input.split('/').some(seg => seg === '..' || seg === '.')) throw new PathViolation(input, 'segment . ou ..')
   if (input.startsWith('/~') || input.includes('/~/')) throw new PathViolation(input, 'tilde')
-  const normalized = posix.normalize(input).replace(/\/+$/, '') || '/'
+  const normalized = trimTrailingSlashes(posix.normalize(input)) || '/'
   return normalized
 }
 

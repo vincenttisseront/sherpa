@@ -16,6 +16,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { type Server, createServer } from 'node:http'
 import { join, relative } from 'node:path'
 import { makeZip } from '../server/lib/zip-writer'
+import { byCode } from '../shared/utils/compare'
 
 export interface MockRepo {
   files: Record<string, string>
@@ -62,10 +63,10 @@ export interface MockOptions {
   owners?: Record<string, MockOwner>
 }
 
-const sha1 = (s: string) => createHash('sha1').update(s).digest('hex')
+const sha1 = (s: string) => createHash('sha1').update(s).digest('hex') // NOSONAR : faux identifiant de commit au format Git (SHA-1), pour le mock de test
 
 export function commitOf(repo: MockRepo): string {
-  return sha1(JSON.stringify(Object.entries(repo.files).sort()))
+  return sha1(JSON.stringify(Object.entries(repo.files).sort(([a], [b]) => byCode(a, b))))
 }
 
 export function createMockGithub(repos: Record<string, MockRepo>, opts: MockOptions = {}): Server {
@@ -94,7 +95,7 @@ export function createMockGithub(repos: Record<string, MockRepo>, opts: MockOpti
   })
 
   function handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, input: Record<string, unknown> | null) {
-    const url = new URL(req.url ?? '/', 'http://x')
+    const url = new URL(req.url ?? '/', 'http://x') // NOSONAR : base factice pour analyser le chemin, aucune requête émise
     const isDownload = url.pathname.startsWith('/_download/')
     if (opts.token && !isDownload && req.headers.authorization !== `Bearer ${opts.token}`) return json(res, 401, { message: 'Bad credentials' })
     const bearer = /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1]

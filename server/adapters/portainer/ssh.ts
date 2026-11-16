@@ -30,7 +30,7 @@ function sshOf(conn: PortainerConnection) {
 export const sshTransport: DockerTransport = {
   label: 'Docker (SSH)',
   authError: 'Accès refusé par Docker sur l\'hôte : l\'utilisateur SSH doit pouvoir utiliser le socket Docker',
-  target: async conn => ({ base: 'http://docker', dispatcher: dispatcherFor(await sshDockerSocket(sshOf(conn))) }),
+  target: async conn => ({ base: 'http://docker', dispatcher: dispatcherFor(await sshDockerSocket(sshOf(conn))) }), // NOSONAR : nom d'hôte fictif : le trafic passe par le socket Docker de l'hôte, tunnelé en SSH
   dockerPrefix: () => '',
   interactive: true,
   headers: () => ({}),

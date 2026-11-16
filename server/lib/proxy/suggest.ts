@@ -5,6 +5,7 @@
  */
 import type { ProxyCandidate, ProxyKind, ProxyRoute, ProxyTopology, TraefikSuggestion } from '../../../shared/schemas/proxy'
 import { HOSTNAME_RE, isAllowedHost } from '../../../shared/utils/domains'
+import { byCode } from '../../../shared/utils/compare'
 
 export interface NetworkInfo { name: string, policy: 'unreviewed' | 'allowed' | 'forbidden', missing: boolean }
 
@@ -33,7 +34,7 @@ export function domainPatterns(hosts: readonly string[]): string[] {
     if (hs.length >= 2) out.add(`*.${parent}`)
     else out.add(hs[0]!)
   }
-  return [...out].sort()
+  return [...out].sort(byCode)
 }
 
 export function suggestTraefikConfig(topo: ProxyTopology, networks: readonly NetworkInfo[], existingDomains: readonly string[] = []): TraefikSuggestion {
@@ -76,7 +77,7 @@ export function suggestTraefikConfig(topo: ProxyTopology, networks: readonly Net
   // Les domaines déjà autorisés sont conservés ; seuls les hôtes qu'ils ne couvrent pas sont ajoutés.
   const uncovered = hosts.filter(h => !isAllowedHost(h, existingDomains))
   const added = domainPatterns(uncovered)
-  const allowedDomains = [...new Set([...existingDomains, ...added])].sort()
+  const allowedDomains = [...new Set([...existingDomains, ...added])].sort(byCode)
   notes.allowedDomains = !hosts.length
     ? (existingDomains.length ? 'Aucun domaine routé : domaines autorisés actuels conservés' : 'Aucun domaine routé : à compléter')
     : added.length
@@ -194,7 +195,7 @@ export function suggestProxyConfig(topo: ProxyTopology, networks: readonly Netwo
 
   const hosts = topo.routes.filter(r => r.proxyId === c.id && r.kind === 'http').flatMap(r => r.hosts)
   const added = domainPatterns(hosts.filter(h => !isAllowedHost(h, existingDomains)))
-  const allowedDomains = [...new Set([...existingDomains, ...added])].sort()
+  const allowedDomains = [...new Set([...existingDomains, ...added])].sort(byCode)
   notes.allowedDomains = hosts.length ? `Déduits des ${new Set(hosts).size} domaine(s) déjà servis par ${c.name}` : 'Aucun domaine lu dans sa configuration : à compléter'
 
   const https = webPorts(c).filter(p => p.privatePort === 443)

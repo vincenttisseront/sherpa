@@ -19,6 +19,7 @@ import { listCertificates } from './proxy-certificates'
 import { buildProxyGraph } from '../../shared/utils/proxy-graph'
 import { endpointProxyMap } from './proxy-map'
 import { type DetectedUrl, linksOf } from './dashboard-links'
+import { byCode } from '../../shared/utils/compare'
 
 const within = <T>(col: Parameters<typeof inArray>[0], ids: T[] | null): SQL | undefined => (ids === null ? undefined : ids.length ? inArray(col, ids as never[]) : sql`false`)
 
@@ -144,7 +145,7 @@ export async function loadDashboard(user: AuthUser, period: Period): Promise<Das
       failing: h?.failing.map(f => f.service) ?? [],
       release: rel ? { number: rel.r.number, activatedAt: rel.r.activatedAt?.toISOString() ?? null, source } : null,
       lastDeployment: last ? { id: last.id, status: last.status, at: last.at.toISOString() } : null,
-      images: [...new Set(Object.values(rel?.r.images ?? {}).map(i => i.replace(/^docker\.io\/(library\/)?/, '')))].sort(),
+      images: [...new Set(Object.values(rel?.r.images ?? {}).map(i => i.replace(/^docker\.io\/(library\/)?/, '')))].sort(byCode),
       links: linksOf(t, httpsPortOf(t), detected.get(t.endpointId) ?? []),
       watchtower: !!t.watchtower,
       watchtowerToApply: !!watchtowerToApply(t, engineImage),

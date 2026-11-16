@@ -14,6 +14,7 @@ import { env } from '../utils/env'
 import { globalAdminUserIds } from './admin'
 import { listChannels } from './notifications'
 import { security } from './readiness'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 const KEY = 'onboarding'
 
@@ -105,7 +106,7 @@ export async function onboardingFacts(): Promise<OnboardingFacts> {
 
 /** Joignabilité des API GitHub autorisées, sans token (limite anonyme affichée). */
 export async function checkGithubApis(): Promise<GithubCheck[]> {
-  const apis = env().GITHUB_ALLOWED_API_URLS.split(',').map(x => x.trim().replace(/\/+$/, '')).filter(Boolean)
+  const apis = env().GITHUB_ALLOWED_API_URLS.split(',').map(x => trimTrailingSlashes(x.trim())).filter(Boolean)
   return Promise.all(apis.map(async (api): Promise<GithubCheck> => {
     try {
       const res = await fetch(`${api}/rate_limit`, { headers: { 'accept': 'application/vnd.github+json', 'user-agent': 'sherpa' }, redirect: 'manual', signal: AbortSignal.timeout(10_000) })

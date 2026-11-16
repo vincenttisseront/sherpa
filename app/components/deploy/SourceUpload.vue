@@ -136,7 +136,7 @@ function onDrop(e: DragEvent) {
     >
       <strong>Déposer l'archive du projet</strong>
       <span class="muted">.zip, .tar.gz (.tgz) ou .tar — ou cliquer pour la choisir ; elle est inspectée avant tout envoi vers le serveur</span>
-      <input ref="input" type="file" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="sr-only" @change="e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) send(f); (e.target as HTMLInputElement).value = '' }">
+      <input ref="input" type="file" aria-label="Choisir une archive à envoyer" accept=".zip,.tar.gz,.tgz,.tar,application/zip,application/gzip,application/x-tar" class="sr-only" @change="e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) send(f); (e.target as HTMLInputElement).value = '' }">
     </div>
     <UiProgressSteps v-if="phase !== 'idle'" :steps="steps" />
     <p v-if="error && phase !== 'error'" class="error" role="alert">{{ error }}</p>

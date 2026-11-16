@@ -15,6 +15,7 @@ import { extract } from 'tar-stream'
 import yazl from 'yazl'
 import { PathViolation, validateRelativeEntry } from '../utils/path-guard'
 import { ZipRejected } from './zip'
+import { trimTrailingSlashes } from '../../shared/utils/trim'
 
 export type ArchiveFormat = 'zip' | 'tar.gz' | 'tar'
 
@@ -72,7 +73,7 @@ export async function tarToZip(input: string, format: 'tar.gz' | 'tar', output: 
     }
     let rel: string
     try {
-      rel = validateRelativeEntry(raw.replace(/\/+$/, ''))
+      rel = validateRelativeEntry(trimTrailingSlashes(raw))
     }
     catch (e) {
       fail(new ZipRejected(`Nom d'entrée refusé (${e instanceof PathViolation ? e.reason : 'invalide'})`, header.name))

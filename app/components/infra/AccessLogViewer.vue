@@ -116,6 +116,7 @@ const timeOf = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('
         <section v-if="data.stats.hosts.length">
           <h4>Domaines</h4>
           <table class="table">
+            <thead class="sr-only"><tr><th>Domaine</th><th>Requêtes</th><th>Erreurs 5xx</th><th>Latence p95</th></tr></thead>
             <tbody>
               <tr v-for="h in data.stats.hosts" :key="h.host" class="clickable" @click="host = host === h.host ? '' : h.host">
                 <td class="mono">{{ h.host }}</td><td class="num">{{ h.requests }}</td>
@@ -127,6 +128,7 @@ const timeOf = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('
         <section v-if="data.stats.paths.length">
           <h4>Chemins</h4>
           <table class="table">
+            <thead class="sr-only"><tr><th>Chemin</th><th>Requêtes</th><th>Erreurs</th></tr></thead>
             <tbody>
               <tr v-for="p in data.stats.paths" :key="p.path"><td class="mono path">{{ p.path }}</td><td class="num">{{ p.requests }}</td><td class="num"><UiBadge v-if="p.errors" tone="danger">{{ p.errors }}</UiBadge></td></tr>
             </tbody>
@@ -135,6 +137,7 @@ const timeOf = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('
         <section v-if="data.stats.remotes.length">
           <h4>Clients</h4>
           <table class="table">
+            <thead class="sr-only"><tr><th>Client</th><th>Requêtes</th></tr></thead>
             <tbody>
               <tr v-for="r in data.stats.remotes" :key="r.remote" class="clickable" @click="search = r.remote"><td class="mono">{{ r.remote }}</td><td class="num">{{ r.requests }}</td></tr>
             </tbody>

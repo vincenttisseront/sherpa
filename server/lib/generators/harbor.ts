@@ -10,6 +10,7 @@
 import { posix } from 'node:path'
 import YAML from 'yaml'
 import { HOSTNAME_RE } from '../../../shared/utils/domains'
+import { byCode } from '../../../shared/utils/compare'
 
 export interface HarborInstaller {
   /** Dossier racine de l'archive (« harbor »), ou null. */
@@ -133,5 +134,5 @@ export function adaptHarborCompose(text: string, composeDir: string): AdaptedCom
     }
   }
   changes.unshift(`Montages ./common/config/… rendus absolus vers ${composeDir}`)
-  return { yaml: YAML.stringify(doc, { lineWidth: 0 }), envFiles: [...envFiles].sort(), changes }
+  return { yaml: YAML.stringify(doc, { lineWidth: 0 }), envFiles: [...envFiles].sort(byCode), changes }
 }
