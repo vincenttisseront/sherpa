@@ -67,8 +67,8 @@ export function resultFormat(withDraft = false) {
 }
 
 /** Une donnée ne doit pas pouvoir refermer la balise qui l'encadre. */
-const neutralize = (text: string): string => text.replaceAll('</data', '<\\/data').replaceAll('<data', '<\\data')
-const oneLine = (s: string): string => s.replaceAll('\n', ' ').replaceAll('"', '\'')
+export const neutralize = (text: string): string => text.replaceAll('</data', '<\\/data').replaceAll('<data', '<\\data')
+export const oneLine = (s: string): string => s.replaceAll('\n', ' ').replaceAll('"', '\'')
 
 export interface PromptInput {
   task: TaskSpec

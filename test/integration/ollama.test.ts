@@ -290,6 +290,61 @@ describe.skipIf(!available)('connecteur Ollama (base de test, modèle simulé)',
     expect(mock.calls).toHaveLength(0)
   })
 
+  it('recherche en langage naturel : seule la phrase part, noms résolus parmi ce que l\'utilisateur voit', async () => {
+    const { naturalSearch } = await import('../../server/services/ai-search')
+    const { encryptSecret } = await import('../../server/utils/crypto')
+    const { envelope, keyId } = encryptSecret('t')
+    const [sec] = await dbm.db().insert(dbm.schema.secrets).values({ purpose: 'agent_secret', envelope, keyId }).returning()
+    const [visible, hidden] = await dbm.db().insert(dbm.schema.projects).values([{ slug: 'billing', name: 'Billing' }, { slug: 'secret-lab', name: 'Secret Lab' }]).returning()
+    await dbm.db().insert(dbm.schema.portainerServers).values({ name: 'srv-paris', url: 'https://p.test', tokenSecretId: sec!.id } as never)
+    const admin = { id: null, email: 'a@x.fr', displayName: 'A', kind: 'dev' as const, grants: [{ permissions: ['audit:read', 'deployment:read', 'server:read'], scope: {} }] }
+    // Droit limité au projet Billing : « Secret Lab » n'existe pas pour lui.
+    const limited = { ...admin, grants: [{ permissions: ['audit:read', 'deployment:read', 'server:read'], scope: { projectId: visible!.id } }] }
+
+    mock.reply = JSON.stringify({ period: '7d', status: ['FAILED'], environment: 'prod', project: 'billing', sql: 'DROP TABLE audit_log' })
+    const r = await naturalSearch(admin, 'deployments', 'échecs de production de Billing cette semaine, password=hunter2hunter2')
+    expect(mock.calls).toHaveLength(1)
+    const sent = lastPrompt()
+    expect(sent).toContain('échecs de production de Billing cette semaine')
+    expect(sent).not.toContain('hunter2hunter2')
+    expect(sent).not.toContain('Secret Lab')
+    expect(mock.calls[0]!.req.format).toBeTruthy()
+    const env = (await dbm.db().select().from(dbm.schema.environments)).find(e => e.key === 'production')!
+    expect(r.query).toEqual({ period: '7d', status: 'FAILED', environmentId: env.id, projectId: visible!.id })
+    expect(r.ignored.join('\n')).toContain('sql')
+    expect(r.applied.map(a => a.label)).toEqual(['Période', 'Statut', 'Environnement', 'Projet'])
+    expect(JSON.stringify(r)).not.toContain('DROP TABLE')
+
+    mock.reply = JSON.stringify({ project: 'secret lab' })
+    const none = await naturalSearch(limited, 'audit', 'le projet Secret Lab').catch(e => e)
+    expect(none).toMatchObject({ statusCode: 422, statusMessage: expect.stringContaining('introuvable') })
+    mock.reply = JSON.stringify({ project: 'secret lab', outcome: ['denied'] })
+    const partial = await naturalSearch(limited, 'audit', 'refus du projet Secret Lab')
+    expect(partial.query).toEqual({ outcome: 'denied' })
+    expect(partial.ignored.join('\n')).toContain('introuvable')
+    expect(Object.values(partial.query)).not.toContain(hidden!.id)
+
+    mock.reply = JSON.stringify({ server: 'paris', buildFailed: true, unacknowledged: true })
+    const srv = await naturalSearch(admin, 'deployments', 'échecs de build à Paris non acquittés')
+    expect(srv.query).toMatchObject({ buildFailed: 'true', unacknowledged: 'true' })
+    expect(srv.query.serverId).toMatch(/^[0-9a-f-]{36}$/)
+
+    mock.reply = 'impossible'
+    await expect(naturalSearch(admin, 'audit', 'quelque chose')).rejects.toMatchObject({ statusCode: 422 })
+    mock.reply = '{}'
+    await expect(naturalSearch(admin, 'audit', 'rien de précis')).rejects.toMatchObject({ statusCode: 422 })
+  })
+
+  it('recherche en langage naturel : fonction désactivée, rien n\'est envoyé', async () => {
+    const { naturalSearch } = await import('../../server/services/ai-search')
+    const user = { id: null, email: 'a@x.fr', displayName: 'A', kind: 'dev' as const, grants: [{ permissions: ['audit:read'], scope: {} }] }
+    await svc.saveOllamaSettings({ ...base, features: ['logs'] }, null)
+    mock.calls.length = 0
+    await expect(naturalSearch(user, 'audit', 'refus de la semaine')).rejects.toMatchObject({ statusCode: 409 })
+    expect(mock.calls).toHaveLength(0)
+    await svc.saveOllamaSettings({ ...base }, null)
+  })
+
   it('supprime le jeton à la demande', async () => {
     const { settings, credentialChanged } = await svc.saveOllamaSettings({ ...base, clearToken: true }, null)
     expect(settings.hasToken).toBe(false)

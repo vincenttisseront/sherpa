@@ -4,7 +4,7 @@ import type { Paginated } from '#shared/schemas/common'
 import type { BulkAcknowledgeResult, DeploymentRow } from '#shared/schemas/lists'
 import { type Column, type TableState, stateFromRoute } from '~/types/table'
 
-const props = defineProps<{ targetId?: string, syncRoute?: boolean }>()
+const props = defineProps<{ targetId?: string, syncRoute?: boolean, nlSearch?: boolean }>()
 const route = useRoute()
 
 const STATUS_GROUPS: Record<string, { label: string, value: string }> = {
@@ -85,6 +85,7 @@ const duration = (s: number | null) => (s === null ? '—' : s < 120 ? `${s} s` 
 </script>
 
 <template>
+  <NlSearch v-if="nlSearch && !targetId" v-model:query="query" table="deployments" placeholder="Décrire la recherche : échecs de production cette semaine…" />
   <UiDataTable v-model:query="query" v-model:selected="selected" :selectable="canAck ? ackable : undefined" :fixed="targetId ? { targetId } : undefined" :table-key="targetId ? undefined : 'deployments'" export-url="/api/deployments" period :columns="columns" :rows="data?.items ?? []" :total="data?.total ?? 0" :loading="status === 'pending'" empty-text="Aucune opération">
     <template #filters>
       <select v-model="statusChoice" class="input auto" aria-label="Statut">

@@ -5,6 +5,6 @@ useHead({ title: 'Déploiements' })
 <template>
   <div>
     <UiPageHeader title="Déploiements" icon="rocket" />
-    <DeploymentsTable sync-route />
+    <DeploymentsTable sync-route nl-search />
   </div>
 </template>

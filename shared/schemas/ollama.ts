@@ -133,3 +133,21 @@ export const analysisExplainInput = z.object({
   focus: logAnalysisFocus,
 })
 export type AnalysisExplainInput = z.infer<typeof analysisExplainInput>
+
+/** Recherche en langage naturel : tableaux pris en charge et réponse (filtres à appliquer au tableau). */
+export const SEARCH_TABLES = ['audit', 'deployments'] as const
+export type SearchTable = (typeof SEARCH_TABLES)[number]
+export const nlSearchInput = z.object({ text: z.string().trim().min(3, 'Décrire la recherche en quelques mots').max(300) })
+
+export interface NlSearchDto {
+  table: SearchTable
+  /** Paramètres du tableau reconnus (valeurs textuelles, comme dans l'URL). */
+  query: Record<string, string>
+  /** Tous les paramètres que la recherche remplace : ceux qui n'ont pas de valeur sont effacés. */
+  filterKeys: string[]
+  /** Ce qui a été compris, lisible (« Période : 7 jours »). */
+  applied: { label: string, value: string }[]
+  /** Ce qui n'a pas été appliqué (inconnu, ambigu ou hors de vos droits). */
+  ignored: string[]
+  meta: { model: string, durationMs: number }
+}

@@ -37,6 +37,7 @@ const brief = (d: Record<string, unknown>) => Object.entries(d).slice(0, 3).map(
 <template>
   <div>
     <UiPageHeader title="Audit" icon="scroll" />
+    <NlSearch v-model:query="query" table="audit" placeholder="Décrire la recherche : refus de la semaine pour le projet Billing…" />
     <UiDataTable v-model:query="query" table-key="audit" :defaults="{ period: '7d' }" export-url="/api/audit" period :columns="columns" :rows="data?.items ?? []" :total="data?.total ?? 0" :loading="status === 'pending'" empty-text="Aucun évènement">
       <template #filters>
         <select v-model="query.action" class="input auto" aria-label="Domaine">

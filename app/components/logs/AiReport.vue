@@ -5,7 +5,7 @@
  * pas activé. Le navigateur n'appelle jamais Ollama : seule l'API de la plateforme est jointe, et les
  * secrets sont masqués côté serveur avant envoi au modèle.
  */
-import type { AiReportDto, OllamaFeature, OllamaStatusDto } from '#shared/schemas/ollama'
+import type { AiReportDto, OllamaFeature } from '#shared/schemas/ollama'
 import { Copy, Sparkles } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
@@ -26,8 +26,7 @@ const props = withDefaults(defineProps<{
 }>(), { url: undefined, body: () => ({}), label: 'Analyser avec Ollama', title: 'Analyse par Ollama', causesLabel: 'Causes probables', actionsLabel: 'Quoi faire', draftLabel: 'Texte proposé', ask: true, size: 'sm' })
 
 const toast = useToast()
-const { data: status } = useFetch<OllamaStatusDto>('/api/ollama/status', { key: 'ollama-status', default: () => ({ enabled: false, model: null, features: [] }) })
-const available = computed(() => !!status.value?.enabled && status.value.features.includes(props.feature))
+const { status, available } = useOllamaFeature(props.feature)
 
 const open = ref(false)
 const focus = ref('')
