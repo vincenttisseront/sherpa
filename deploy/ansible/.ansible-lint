@@ -1,0 +1,6 @@
+# Messages et commandes Compose longs en français : limite de ligne relâchée.
+skip_list:
+  - yaml[line-length]
+exclude_paths:
+  - collections/
+  - .cache/

@@ -1,0 +1,94 @@
+- name: Répertoires de la console
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ platform_dir }}", mode: "0755" }
+    # Secrets : répertoire réservé à root ; les fichiers sont lisibles par les conteneurs (montés par le démon).
+    - { path: "{{ platform_dir }}/secrets", mode: "0700" }
+    - { path: "{{ platform_backup_dir }}", mode: "0700" }
+
+# Console déjà installée dans un autre dossier (platform_dir modifié) : dossier lu sur ses conteneurs.
+- name: Dossier d'une installation existante
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      docker ps -a --filter label=com.docker.compose.project={{ platform_project | quote }}
+      --format '{{ '{{' }}.Label "com.docker.compose.project.working_dir"{{ '}}' }}' | sort -u
+    executable: /bin/bash
+  register: platform_previous_dirs
+  changed_when: false
+
+# Installation sous l'ancien nom (portainer-platform) : son dossier, lu sur ses conteneurs, sinon le dossier par défaut.
+- name: Dossier d'une installation sous l'ancien nom
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      docker ps -a --filter label=com.docker.compose.project={{ platform_legacy_project | quote }}
+      --format '{{ '{{' }}.Label "com.docker.compose.project.working_dir"{{ '}}' }}' | sort -u
+    executable: /bin/bash
+  register: platform_legacy_dirs
+  changed_when: false
+  when: platform_legacy_project | length > 0 and platform_legacy_project != platform_project
+
+- name: Dossier par défaut de l'ancienne installation présent ?
+  ansible.builtin.stat:
+    path: "{{ platform_legacy_dir }}/secrets/master_key"
+  register: platform_legacy_default
+  when: platform_legacy_project | length > 0 and platform_legacy_project != platform_project
+
+- name: Dossiers d'où reprendre les secrets
+  ansible.builtin.set_fact:
+    platform_source_dirs: >-
+      {{ (platform_previous_dirs.stdout_lines
+          + (platform_legacy_dirs.stdout_lines | default([]))
+          + ([platform_legacy_dir] if (platform_legacy_default.stat.exists | default(false)) else []))
+         | reject('equalto', platform_dir) | unique | list }}
+
+- name: Secrets de l'ancien dossier repris
+  ansible.builtin.command:
+    cmd: cp -a {{ (item ~ '/secrets/.') | quote }} {{ (platform_dir ~ '/secrets/') | quote }}
+    creates: "{{ platform_dir }}/secrets/master_key"
+  loop: "{{ platform_source_dirs }}"
+  register: platform_relocated
+
+- name: Ancien dossier laissé en place
+  ansible.builtin.debug:
+    msg: >-
+      Console déplacée de {{ item.item }} vers {{ platform_dir }} (secrets repris, volumes inchangés).
+      Après vérification : retirer {{ item.item }} (sauvegardes dans {{ item.item }}/backups) et son
+      unité de sauvegarde éventuelle.
+  loop: "{{ platform_relocated.results | default([]) | selectattr('changed') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Fichier Compose de production et script de sauvegarde (depuis le dépôt)
+  ansible.builtin.copy:
+    src: "{{ platform_repo_dir }}/{{ item.src }}"
+    dest: "{{ platform_dir }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+    - { src: deploy/backup.sh, dest: backup.sh, mode: "0755" }
+    - { src: deploy/restore.sh, dest: restore.sh, mode: "0755" }
+
+- name: Surcharge Compose propre à l'hôte (image, exposition)
+  ansible.builtin.template:
+    src: compose.ansible.yml.j2
+    dest: "{{ platform_dir }}/compose.ansible.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Variables d'environnement (.env, sans secret)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ platform_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0640"

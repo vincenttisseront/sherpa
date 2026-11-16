@@ -1,0 +1,19 @@
+- name: Vérifications préalables
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [runner, preflight]
+
+- name: Utilisateur et racines
+  ansible.builtin.import_tasks: roots.yml
+  tags: [runner, roots]
+
+- name: Certificats et clé HMAC
+  ansible.builtin.import_tasks: secrets.yml
+  tags: [runner, secrets]
+
+- name: Image
+  ansible.builtin.import_tasks: image.yml
+  tags: [runner, image]
+
+- name: Lancement
+  ansible.builtin.import_tasks: deploy.yml
+  tags: [runner, deploy]

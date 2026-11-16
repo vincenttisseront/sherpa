@@ -1,0 +1,34 @@
+- name: Sauvegarde quotidienne (systemd)
+  when: platform_backup_timer | bool and ansible_service_mgr | default('') == 'systemd'
+  block:
+    - name: Service de sauvegarde
+      ansible.builtin.template:
+        src: platform-backup.service.j2
+        dest: /etc/systemd/system/{{ platform_project }}-backup.service
+        mode: "0644"
+      notify: Recharger systemd
+
+    - name: Minuterie de sauvegarde
+      ansible.builtin.template:
+        src: platform-backup.timer.j2
+        dest: /etc/systemd/system/{{ platform_project }}-backup.timer
+        mode: "0644"
+      notify: Recharger systemd
+
+    - name: Prise en compte de systemd
+      ansible.builtin.meta: flush_handlers
+
+    - name: Minuterie active
+      ansible.builtin.systemd_service:
+        name: "{{ platform_project }}-backup.timer"
+        enabled: true
+        state: started
+
+- name: Pas de systemd (sauvegarde à planifier autrement)
+  ansible.builtin.debug:
+    msg: "Gestionnaire de services « {{ ansible_service_mgr | default('inconnu') }} » : planifier {{ platform_dir }}/backup.sh (cron), ou lancer backup.yml."
+  when: platform_backup_timer | bool and ansible_service_mgr | default('') != 'systemd'
+
+- name: Rappel clé maîtresse
+  ansible.builtin.debug:
+    msg: "La clé maîtresse ({{ platform_dir }}/secrets/master_key) n'est PAS dans les sauvegardes : la conserver à part (coffre), sans quoi les secrets chiffrés sont irrécupérables."

@@ -1,0 +1,328 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791450098474,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791450725222,
+      "tag": "0001_sprint1_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791451976000,
+      "tag": "0002_sprint2_runner_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791454147439,
+      "tag": "0003_sprint3_deploy",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791456281792,
+      "tag": "0004_sprint4_github_traefik",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791458663048,
+      "tag": "0005_sprint5_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791461546498,
+      "tag": "0006_sprint6_watchtower",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791463849595,
+      "tag": "0007_sprint7_dashboard_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791469025788,
+      "tag": "0008_sprint10_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791541525044,
+      "tag": "0009_target_adoption",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791558777926,
+      "tag": "0010_server_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791788913054,
+      "tag": "0011_agent_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791790409048,
+      "tag": "0012_project_placement_managed_proxy",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791807586732,
+      "tag": "0013_target_pending_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791808187685,
+      "tag": "0014_target_variables_meta",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791809351195,
+      "tag": "0015_proxy_certificates",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791874591282,
+      "tag": "0016_deployment_acknowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791875262622,
+      "tag": "0017_ssh_transport",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791878775558,
+      "tag": "0018_watchtower_image_applied",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791881146151,
+      "tag": "0019_proxy_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791990412608,
+      "tag": "0020_deployment_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793107735135,
+      "tag": "0021_min_free_disk_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793176710556,
+      "tag": "0022_network_pool",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793179779518,
+      "tag": "0023_watchtower_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793180575114,
+      "tag": "0024_watchtower_detached",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793181181444,
+      "tag": "0025_watchtower_registries",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793266153747,
+      "tag": "0026_stack_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793294229259,
+      "tag": "0027_nginx_proxies",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793295048455,
+      "tag": "0028_nginx_certificates",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793297058510,
+      "tag": "0029_dns_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793348223939,
+      "tag": "0030_nginx_access_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793350442640,
+      "tag": "0031_auto_rebuild",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793351128960,
+      "tag": "0032_github_connectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793353371552,
+      "tag": "0033_image_scans",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793355802093,
+      "tag": "0034_source_scans",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793364108336,
+      "tag": "0035_remediation_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793372037406,
+      "tag": "0036_scan_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793375434854,
+      "tag": "0037_scan_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793615372527,
+      "tag": "0038_network_allocation_pinned",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794567165132,
+      "tag": "0039_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794568715443,
+      "tag": "0040_api_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794570591223,
+      "tag": "0041_mfa",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794573543402,
+      "tag": "0042_compose_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794574131330,
+      "tag": "0043_container_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794574771724,
+      "tag": "0044_deploy_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794576619780,
+      "tag": "0045_notification_channels_more",
+      "breakpoints": true
+    }
+  ]
+}

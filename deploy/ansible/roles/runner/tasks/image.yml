@@ -1,0 +1,106 @@
+- name: Image déjà présente sur l'hôte ?
+  ansible.builtin.command: docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' {{ runner_image | quote }}
+  register: runner_image_present
+  changed_when: false
+  failed_when: false
+
+- name: Archive de l'image (poste local)
+  when: runner_image_source == 'archive' and runner_image_present.rc != 0
+  block:
+    - name: Export local de l'image (docker save)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail &&
+          mkdir -p {{ runner_cache_dir | quote }} &&
+          docker save {{ runner_image | quote }} | gzip -1 > {{ runner_local_archive | quote }}.part &&
+          mv {{ runner_local_archive | quote }}.part {{ runner_local_archive | quote }}
+        executable: /bin/bash
+        creates: "{{ runner_local_archive }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      when: runner_image_archive | length == 0
+
+    - name: Copie de l'archive sur l'hôte
+      ansible.builtin.copy:
+        src: "{{ runner_image_archive if runner_image_archive | length > 0 else runner_local_archive }}"
+        dest: "{{ runner_dir }}/image.tar.gz"
+        mode: "0600"
+
+    - name: Chargement de l'image (docker load)
+      ansible.builtin.command: docker load -i {{ (runner_dir ~ '/image.tar.gz') | quote }}
+      changed_when: true
+
+    - name: Archive retirée de l'hôte
+      ansible.builtin.file:
+        path: "{{ runner_dir }}/image.tar.gz"
+        state: absent
+
+- name: Construction de l'image sur l'hôte
+  when: runner_image_source == 'build' and runner_image_present.rc != 0
+  block:
+    - name: Sources de la révision (poste de contrôle)
+      # git archive de la révision demandée ; sans dépôt Git (copie de projet AWX), archive de l'arborescence synchronisée.
+      ansible.builtin.shell:  # noqa: command-instead-of-module (le module git ne fait pas d'archive d'une révision locale)
+        cmd: >-
+          set -o pipefail;
+          mkdir -p {{ runner_cache_dir | quote }} &&
+          if git -C {{ runner_repo_dir | quote }} rev-parse --git-dir >/dev/null 2>&1; then
+          git -C {{ runner_repo_dir | quote }} archive --format=tar.gz -o {{ runner_local_sources | quote }} {{ runner_git_ref | quote }};
+          else
+          tar -C {{ runner_repo_dir | quote }} --exclude=./node_modules --exclude=./.data --exclude=./.output --exclude=./.nuxt
+          --exclude=./deploy/ansible/.cache --exclude=./deploy/ansible/collections -czf {{ runner_local_sources | quote }} .;
+          fi
+        executable: /bin/bash
+        creates: "{{ runner_local_sources }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Répertoire de build propre
+      ansible.builtin.file:
+        path: "{{ runner_dir }}/build"
+        state: "{{ item }}"
+        owner: root
+        group: root
+        mode: "0700"
+      loop: [absent, directory]
+
+    - name: Sources copiées sur l'hôte
+      ansible.builtin.copy:
+        src: "{{ runner_local_sources }}"
+        dest: "{{ runner_dir }}/build.tar.gz"
+        mode: "0600"
+
+    - name: Sources décompressées sur l'hôte
+      ansible.builtin.command:  # noqa: command-instead-of-module (tar de BusyBox accepté, contrairement à unarchive)
+        cmd: tar -xzf {{ (runner_dir ~ '/build.tar.gz') | quote }} -C {{ (runner_dir ~ '/build') | quote }}
+      changed_when: true
+
+    - name: AC d'entreprise pour npm (facultatif)
+      ansible.builtin.copy:
+        src: "{{ runner_build_ca_file }}"
+        dest: "{{ runner_dir }}/build/.npm-ca.pem"
+        mode: "0600"
+      when: runner_build_ca_file | length > 0
+
+    - name: Construction docker build
+      ansible.builtin.command:
+        cmd: >-
+          docker build -f Dockerfile.runner -t {{ runner_image | quote }}
+          {{ '--secret id=npm_ca,src=.npm-ca.pem' if runner_build_ca_file | length > 0 else '' }} .
+        chdir: "{{ runner_dir }}/build"
+      environment:
+        DOCKER_BUILDKIT: "1"
+      changed_when: true
+
+    - name: Sources retirées de l'hôte
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: ["{{ runner_dir }}/build", "{{ runner_dir }}/build.tar.gz"]
+
+- name: Image présente après préparation
+  ansible.builtin.command: docker image inspect {{ runner_image | quote }}
+  changed_when: false
+  when: runner_image_source != 'registry'

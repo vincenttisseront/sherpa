@@ -1,0 +1,1 @@
+ALTER TABLE "project_targets" ADD COLUMN "variables_meta" jsonb DEFAULT '{}'::jsonb NOT NULL;

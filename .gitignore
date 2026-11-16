@@ -1,0 +1,19 @@
+node_modules
+.nuxt
+.output
+.data
+dist
+.env
+.env.*
+!.env.example
+secrets/
+*.log
+.DS_Store
+coverage
+
+# Ansible : inventaire local, collections, archives de déploiement
+deploy/ansible/inventory/hosts.yml
+deploy/ansible/collections/
+deploy/ansible/.cache/
+deploy/ansible/awx/vars.yml
+deploy/ansible/awx/vault.yml

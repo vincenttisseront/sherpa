@@ -1,0 +1,51 @@
+# --- Emplacement ---
+runner_dir: /opt/platform-runner
+runner_project: platform-runner
+runner_repo_dir: "{{ playbook_dir }}/../.."
+
+# --- Utilisateur propriétaire des racines (le Runner tourne sous son UID/GID) ---
+runner_user: deploy
+runner_create_user: true
+
+# --- Racines autorisées : seule source de vérité du périmètre (dossier dédié : /srv/deployments, /tools… ; pas /srv ni /opt) ---
+# Les chemins de l'endpoint dans la console (onglet Chemins) doivent être SOUS ces racines.
+runner_roots:
+  - /srv/deployments
+  - /srv/builds
+  - /srv/tmp
+  - /srv/apps-data
+
+# --- Écoute : interface du réseau d'administration uniquement ---
+runner_bind_ip: "{{ ansible_default_ipv4.address | default('') }}"
+runner_port: 8443
+
+# --- Build d'images (socket Docker de l'hôte, équivalent root : voir docs/runner.md) ---
+runner_docker_build: true
+
+# --- Image : registry | archive | build (comme le rôle platform) ---
+runner_image_source: build
+runner_version: latest
+runner_image_repository: sherpa-runner
+runner_image: "{{ runner_image_repository }}:{{ runner_version }}"
+runner_image_archive: ""
+runner_git_ref: HEAD
+runner_build_ca_file: ""
+runner_cache_dir: "{{ playbook_dir }}/.cache"
+runner_local_archive: "{{ runner_cache_dir }}/runner-image-{{ runner_version }}.tar.gz"
+runner_local_sources: "{{ runner_cache_dir }}/runner-src-{{ runner_version }}.tar.gz"
+
+# --- PKI d'entreprise (fichiers locaux) ---
+runner_tls_cert_file: ""            # certificat serveur du Runner (SAN = nom de l'URL, serverAuth)
+runner_tls_key_file: ""
+runner_client_ca_file: ""           # AC du certificat client de la console
+# Ou leur contenu PEM (ansible-vault, par ex. host_vars/<hôte>/vault.yml) : prioritaire sur les fichiers.
+runner_tls_cert: ""
+runner_tls_key: ""
+runner_client_ca: ""
+
+# --- Clé HMAC : générée par la console à l'enregistrement du Runner (affichée une fois) ---
+# À poser en ansible-vault. Vide : tout est préparé, le Runner n'est pas démarré.
+runner_hmac_key: ""
+
+# --- Variables supplémentaires (RUNNER_MAX_BUILDS, RUNNER_BUILD_MAX_MEMORY_MB…) ---
+runner_env: {}

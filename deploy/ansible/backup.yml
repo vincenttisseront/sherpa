@@ -1,0 +1,34 @@
+# Sauvegarde immédiate de la base : ansible-playbook backup.yml
+- name: Sauvegarde de la base de la console
+  hosts: all
+  pre_tasks:
+    # Hôtes visés : ceux du groupe « platform » s'il existe ; sinon le ou les hôtes choisis par la limite
+    # (AWX : champ « Limite » du modèle). Plusieurs hôtes sans choix explicite : refus, pour ne pas
+    # installer partout par erreur.
+    - name: Hôte cible choisi
+      ansible.builtin.assert:
+        that: "'platform' in groups or ansible_limit is defined or ansible_play_hosts_all | length == 1"
+        fail_msg: >-
+          Plusieurs hôtes dans l'inventaire et aucun groupe « platform » : choisir le ou les hôtes avec la limite
+          (AWX : champ « Limite » du modèle, ou « Demander au lancement » ; en ligne de commande : --limit).
+        quiet: true
+      run_once: true  # noqa: run-once[task] (stratégie linéaire par défaut)
+      tags: [always]
+
+    - name: Hors du groupe « platform » (ignoré)
+      ansible.builtin.meta: end_host
+      when: "'platform' in groups and inventory_hostname not in groups['platform']"
+      tags: [always]
+  tasks:
+    - name: Sauvegarde PostgreSQL (pg_dump vérifié)
+      ansible.builtin.command:
+        cmd: "{{ platform_dir | default('/opt/sherpa') }}/backup.sh {{ platform_backup_dir | default('/opt/sherpa/backups') }}"
+        chdir: "{{ platform_dir | default('/opt/sherpa') }}"
+      environment:
+        COMPOSE: "docker compose -p {{ platform_project | default('sherpa') }} --project-directory {{ platform_dir | default('/opt/sherpa') }} -f docker-compose.yml -f compose.ansible.yml"
+        BACKUP_KEEP: "{{ platform_backup_keep | default(14) | string }}"
+      register: platform_backup_run
+      changed_when: true
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "{{ platform_backup_run.stdout_lines }}"

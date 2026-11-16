@@ -1,0 +1,1 @@
+ALTER TABLE "watchtower_profiles" ADD COLUMN "detached_stacks" jsonb DEFAULT '[]'::jsonb NOT NULL;

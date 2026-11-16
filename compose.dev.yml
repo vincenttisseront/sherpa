@@ -1,0 +1,195 @@
+# Plateforme complète en développement, dans une seule stack :
+#   docker compose -f compose.dev.yml up -d --build
+# Interface : http://localhost:3100 — Portainer CE : http://localhost:19000
+# Applications : Traefik géré par la plateforme (platform-traefik), https://<app>.localhost:28443
+#
+# Prérequis (une fois) : .env (MASTER_KEY…), npm run dev:runner-setup (PKI + racines
+# simulées sous .data/runner-dev), AC interne exportée dans .data/ca/internal-ca.pem,
+# AC de confiance des conteneurs (AC interne, inspection TLS Zscaler…) : npm run dev:export-runtime-ca.
+# Pour développer avec rechargement à chaud, ne lancer que postgres et redis :
+#   docker compose -f compose.dev.yml up -d postgres redis
+name: sherpa-dev
+
+x-platform-env: &platform-env
+  # Valeurs du .env (MASTER_KEY…), puis surcharges propres aux conteneurs.
+  DATABASE_URL: postgres://platform:platform@postgres:5432/platform
+  REDIS_URL: redis://redis:6379
+  NODE_ENV: development
+  # Authentification réelle (Sprint 5). Mettre "true" pour revenir à l'administrateur fictif.
+  DEV_AUTH_BYPASS: "false"
+  # Adresse publique : la console derrière le Traefik géré (HTTPS). L'accès direct
+  # http://localhost:3100 reste possible (navigateurs et tests) : localhost est un
+  # contexte sécurisé, les cookies Secure y sont acceptés.
+  APP_URL: https://console.localhost:28443
+  COOKIE_SECURE: "true"
+  PORTAINER_ADAPTER: http
+  RUNNER_ADAPTER: http
+  RUNNER_CLIENT_CERT_FILE: /run/pki/platform-client.crt
+  RUNNER_CLIENT_KEY_FILE: /run/pki/platform-client.key
+  UPLOAD_DIR: /var/lib/platform/uploads
+  # GitHub réel + faux GitHub local (scripts/mock-github.ts) pour les essais hors ligne.
+  GITHUB_ALLOWED_API_URLS: https://api.github.com,http://host.docker.internal:18300,http://host.docker.internal:18301,http://host.docker.internal:18302
+  # Notifications Watchtower : la plateforme vue depuis les conteneurs de l'hôte Docker.
+  WATCHTOWER_HOOK_BASE_URL: http://host.docker.internal:3100
+  # Notifications vers la boîte de développement (npm run dev:inbox).
+  SMTP_HOST: host.docker.internal
+  SMTP_PORT: "1025"
+  SMTP_FROM: Plateforme (dev) <noreply@plateforme.localhost>
+  NOTIFY_WEBHOOK_ALLOWED_HOSTS: "*.webhook.office.com,*.logic.azure.com,*.api.powerplatform.com,host.docker.internal"
+  # AC supplémentaires (inspection TLS du poste, ex. Zscaler sur ECR et mirror.gcr.io) : npm run dev:export-runtime-ca.
+  NODE_EXTRA_CA_CERTS: /run/ca/runtime-ca.pem
+  # Défi DNS-01 : faux Cloudflare des essais (e2e/nginx-proxies.spec.ts), vide = api.cloudflare.com.
+  ACME_DNS_CLOUDFLARE_API: ${ACME_DNS_CLOUDFLARE_API:-}
+  ACME_DNS_PROPAGATION_SEC: ${ACME_DNS_PROPAGATION_SEC:-120}
+  # Reconstruction automatique vérifiée chaque minute en développement (10 min par défaut).
+  AUTO_REBUILD_INTERVAL_MIN: ${AUTO_REBUILD_INTERVAL_MIN:-1}
+
+x-platform-image: &platform-image
+  image: sherpa:dev
+  env_file: .env
+  # Fournisseur OIDC de dev (npm run dev:oidc) joignable sous le même nom que depuis le navigateur.
+  extra_hosts:
+    - "oidc.localhost:host-gateway"
+  volumes:
+    - ./.data/runner-dev/pki:/run/pki:ro
+    - ./.data/uploads:/var/lib/platform/uploads
+    - ./.data/ca:/run/ca:ro
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+      POSTGRES_DB: platform
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    <<: *platform-image
+    build:
+      context: .
+      secrets: [npm_ca]
+    environment: *platform-env
+    command: ["node", "dist/migrate.mjs"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    <<: *platform-image
+    environment:
+      <<: *platform-env
+      NUXT_HOST: 0.0.0.0
+      NUXT_PORT: "3000"
+    ports:
+      - "127.0.0.1:3100:3000"
+    # Réseau du Traefik géré : la console (APP_URL) reste joignable quand le conteneur est recréé.
+    networks: [default, platform-edge]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
+
+  worker:
+    <<: *platform-image
+    environment: *platform-env
+    command: ["node", "dist/worker.mjs"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Agent Portainer de l'hôte, joint directement par la console (serveur de type « agent »,
+  # URL https://agent:9001, certificat auto-signé). Secret partagé : .data/dev-auth/agent.env.
+  agent:
+    image: portainer/agent:2.27.4
+    env_file: ./.data/dev-auth/agent.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    restart: unless-stopped
+
+  # Target Runner de l'hôte simulé. Les racines sont montées au MÊME chemin
+  # absolu que sur la machine : les chemins écrits dans les Compose déployés
+  # désignent ainsi les mêmes répertoires pour Docker.
+  runner:
+    image: sherpa-runner:dev
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+      secrets: [npm_ca]
+    # Développement : root pour accéder au socket Docker de Docker Desktop.
+    user: "0:0"
+    environment:
+      NODE_ENV: development
+      RUNNER_PORT: "8443"
+      RUNNER_ROOTS: ${PWD}/.data/runner-dev/srv/deployments,${PWD}/.data/runner-dev/srv/builds,${PWD}/.data/runner-dev/srv/tmp,${PWD}/.data/runner-dev/srv/apps-data
+      RUNNER_HMAC_KEY_FILE: /run/runner/hmac.key
+      RUNNER_TLS_CERT_FILE: /run/runner/server.crt
+      RUNNER_TLS_KEY_FILE: /run/runner/server.key
+      RUNNER_CLIENT_CA_FILE: /run/runner/ca.crt
+      RUNNER_DOCKER_SOCKET: /var/run/docker.sock
+    volumes:
+      - ./.data/runner-dev/hmac.key:/run/runner/hmac.key:ro
+      - ./.data/runner-dev/pki/server.crt:/run/runner/server.crt:ro
+      - ./.data/runner-dev/pki/server.key:/run/runner/server.key:ro
+      - ./.data/runner-dev/pki/ca.crt:/run/runner/ca.crt:ro
+      - ${PWD}/.data/runner-dev/srv:${PWD}/.data/runner-dev/srv
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:18443:8443"
+    restart: unless-stopped
+
+  # Hôte joint en SSH (mot de passe ou clé), sans agent ni Runner : moteur Docker
+  # isolé (Docker-in-Docker, dev uniquement). Identifiants : npm run dev:ssh-setup.
+  ssh-host:
+    build: ./docker/ssh-dev
+    privileged: true
+    volumes:
+      - ./.data/dev-ssh/password:/run/ssh-dev/password:ro
+      - ./.data/dev-ssh/id_ed25519.pub:/run/ssh-dev/id_ed25519.pub:ro
+      - ./.data/ca:/run/ssh-dev/ca:ro
+      - ssh-host-state:/var/lib/ssh-dev
+      - ssh-host-docker:/var/lib/docker
+    ports:
+      - "127.0.0.1:12222:22"
+    restart: unless-stopped
+
+networks:
+  default: {}
+  # Créé par le Traefik géré de la plateforme ; « npm run stack:up » le crée s'il manque.
+  platform-edge:
+    external: true
+
+secrets:
+  npm_ca:
+    file: ./.data/ca/internal-ca.pem
+
+volumes:
+  pgdata:
+  redisdata:
+  ssh-host-state:
+  ssh-host-docker:

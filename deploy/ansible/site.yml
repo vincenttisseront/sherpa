@@ -1,0 +1,24 @@
+# Déploiement (ou mise à jour) de la console : ansible-playbook site.yml
+- name: Console de déploiement
+  hosts: all
+  any_errors_fatal: true
+  pre_tasks:
+    # Hôtes visés : ceux du groupe « platform » s'il existe ; sinon le ou les hôtes choisis par la limite
+    # (AWX : champ « Limite » du modèle). Plusieurs hôtes sans choix explicite : refus, pour ne pas
+    # installer partout par erreur.
+    - name: Hôte cible choisi
+      ansible.builtin.assert:
+        that: "'platform' in groups or ansible_limit is defined or ansible_play_hosts_all | length == 1"
+        fail_msg: >-
+          Plusieurs hôtes dans l'inventaire et aucun groupe « platform » : choisir le ou les hôtes avec la limite
+          (AWX : champ « Limite » du modèle, ou « Demander au lancement » ; en ligne de commande : --limit).
+        quiet: true
+      run_once: true  # noqa: run-once[task] (stratégie linéaire par défaut)
+      tags: [always]
+
+    - name: Hors du groupe « platform » (ignoré)
+      ansible.builtin.meta: end_host
+      when: "'platform' in groups and inventory_hostname not in groups['platform']"
+      tags: [always]
+  roles:
+    - role: platform

@@ -1,0 +1,5 @@
+# Collections installées par AWX/AAP à la synchronisation du projet (emplacement imposé : racine du dépôt).
+# Identique à deploy/ansible/requirements.yml.
+collections:
+  - name: community.docker
+    version: ">=4.0.0,<6.0.0"

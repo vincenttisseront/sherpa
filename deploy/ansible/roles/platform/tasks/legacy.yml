@@ -1,0 +1,116 @@
+# Reprise d'une console installée sous l'ancien nom (portainer-platform) : le projet Compose a changé
+# de nom, donc ses volumes aussi (<projet>_pgdata…). Sans cette reprise, Sherpa démarrerait sur une
+# base vide. Rien n'est supprimé : l'ancien dossier, les anciens volumes et l'ancienne image restent
+# en place (retour arrière possible) jusqu'à ce que l'exploitation les retire.
+#
+# Étapes, seulement si des volumes de l'ancien projet existent et que pgdata du nouveau n'existe pas :
+#   1. sauvegarde de la base de l'ancienne console (si elle tourne) ;
+#   2. arrêt et retrait de ses conteneurs et réseaux (volumes conservés) ;
+#   3. copie des volumes pgdata, redisdata, uploads vers ceux du nouveau projet.
+# Les secrets ont déjà été repris de l'ancien dossier (files.yml).
+- name: État de l'ancien et du nouveau projet
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      for v in pgdata redisdata uploads; do
+        docker volume inspect {{ (platform_legacy_project ~ '_') | quote }}$v >/dev/null 2>&1 && echo "legacy_volume=$v"
+        docker volume inspect {{ (platform_project ~ '_') | quote }}$v >/dev/null 2>&1 && echo "new_volume=$v"
+      done
+      true
+    executable: /bin/bash
+  register: platform_legacy_state
+  changed_when: false
+  when: platform_legacy_project | length > 0 and platform_legacy_project != platform_project
+
+- name: Volumes à reprendre
+  ansible.builtin.set_fact:
+    platform_legacy_volumes: "{{ platform_legacy_state.stdout_lines | default([]) | select('match', '^legacy_volume=') | map('regex_replace', '^legacy_volume=', '') | list }}"
+    platform_new_volumes: "{{ platform_legacy_state.stdout_lines | default([]) | select('match', '^new_volume=') | map('regex_replace', '^new_volume=', '') | list }}"
+
+- name: Ancienne installation ignorée (le nouveau projet a déjà sa base)
+  ansible.builtin.debug:
+    msg: >-
+      Volumes {{ platform_legacy_project }}_* présents, mais {{ platform_project }}_pgdata existe déjà : aucune reprise.
+      Si l'ancienne console tourne encore, l'arrêter à la main (docker compose -p {{ platform_legacy_project }} down)
+      et retirer ses volumes une fois Sherpa validé.
+  when: "'pgdata' in platform_legacy_volumes and 'pgdata' in platform_new_volumes"
+
+- name: Reprise des données de l'ancienne installation
+  when: "'pgdata' in platform_legacy_volumes and 'pgdata' not in platform_new_volumes"
+  block:
+    - name: Conteneurs de l'ancienne installation
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          project={{ platform_legacy_project | quote }}
+          echo "containers=$(docker ps -a -q --filter label=com.docker.compose.project=$project | wc -l | tr -d ' ')"
+          pg=$(docker ps -q --filter label=com.docker.compose.project=$project --filter label=com.docker.compose.service=postgres | head -1)
+          echo "pg_running=${pg:+yes}"
+          any=$(docker ps -a -q --filter label=com.docker.compose.project=$project --filter label=com.docker.compose.service=postgres | head -1)
+          [ -n "$any" ] && echo "image=$(docker inspect -f '{{ '{{' }}.Config.Image{{ '}}' }}' "$any")"
+          echo "workdir=$(docker ps -a --filter label=com.docker.compose.project=$project --format '{{ '{{' }}.Label "com.docker.compose.project.working_dir"{{ '}}' }}' | sort -u | head -1)"
+          true
+        executable: /bin/bash
+      register: platform_legacy_containers
+      changed_when: false
+
+    - name: Faits sur l'ancienne installation
+      ansible.builtin.set_fact:
+        platform_legacy_pg_running: "{{ 'pg_running=yes' in platform_legacy_containers.stdout_lines }}"
+        # Image déjà présente sur l'hôte (celle de l'ancien PostgreSQL), sinon busybox.
+        platform_legacy_helper: "{{ (platform_legacy_containers.stdout_lines | select('match', '^image=.') | map('regex_replace', '^image=', '') | list | first) | default('busybox:1.37') }}"
+        platform_legacy_workdir: "{{ (platform_legacy_containers.stdout_lines | select('match', '^workdir=.') | map('regex_replace', '^workdir=', '') | list | first) | default(platform_legacy_dir) }}"
+
+    - name: Surcharge Compose de l'ancienne installation présente ?
+      ansible.builtin.stat:
+        path: "{{ platform_legacy_workdir }}/compose.ansible.yml"
+      register: platform_legacy_override
+
+    - name: Commande Compose de l'ancienne installation
+      ansible.builtin.set_fact:
+        platform_legacy_compose: >-
+          docker compose -p {{ platform_legacy_project }} --project-directory {{ platform_legacy_workdir }}
+          -f {{ platform_legacy_workdir }}/docker-compose.yml{{ (' -f ' ~ platform_legacy_workdir ~ '/compose.ansible.yml') if platform_legacy_override.stat.exists else '' }}
+
+    # Sauvegarde de sécurité avant d'arrêter l'ancienne console : une base illisible ne doit pas être copiée en silence.
+    - name: Sauvegarde de la base de l'ancienne console
+      ansible.builtin.command:
+        cmd: "{{ platform_dir }}/backup.sh {{ platform_backup_dir }}"
+        chdir: "{{ platform_dir }}"
+      environment:
+        COMPOSE: "{{ platform_legacy_compose }}"
+        BACKUP_KEEP: "{{ platform_backup_keep | string }}"
+      when: platform_legacy_pg_running
+      changed_when: true
+
+    - name: Arrêt et retrait des conteneurs de l'ancienne installation (volumes conservés)
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          project={{ platform_legacy_project | quote }}
+          ids=$(docker ps -a -q --filter label=com.docker.compose.project=$project)
+          [ -z "$ids" ] || { docker stop -t 30 $ids >/dev/null; docker rm $ids >/dev/null; }
+          # Réseaux de l'ancien projet (le réseau du Traefik, externe, n'en fait pas partie).
+          nets=$(docker network ls -q --filter label=com.docker.compose.project=$project)
+          [ -z "$nets" ] || docker network rm $nets >/dev/null 2>&1 || true
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Volumes copiés vers le nouveau projet
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          from={{ (platform_legacy_project ~ '_' ~ item) | quote }}
+          to={{ (platform_project ~ '_' ~ item) | quote }}
+          docker volume create --label com.docker.compose.project={{ platform_project | quote }} --label com.docker.compose.volume={{ item | quote }} "$to" >/dev/null
+          docker run --rm -v "$from":/from:ro -v "$to":/to {{ platform_legacy_helper | quote }} sh -c 'cp -a /from/. /to/'
+        executable: /bin/bash
+      loop: "{{ platform_legacy_volumes }}"
+      changed_when: true
+
+    - name: Ancienne installation conservée
+      ansible.builtin.debug:
+        msg: >-
+          Données reprises de {{ platform_legacy_project }} vers {{ platform_project }} (volumes {{ platform_legacy_volumes | join(', ') }}).
+          Rien n'est supprimé : après validation de Sherpa, retirer les volumes {{ platform_legacy_project }}_* (docker volume rm),
+          l'ancien dossier {{ platform_legacy_workdir }} et l'ancienne image. Retour arrière : redéployer l'ancienne version.

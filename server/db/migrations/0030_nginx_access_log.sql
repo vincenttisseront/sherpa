@@ -1,0 +1,1 @@
+ALTER TABLE "traefik_configs" ADD COLUMN "nginx_access_log" text DEFAULT 'json' NOT NULL;

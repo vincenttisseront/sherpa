@@ -1,0 +1,41 @@
+- name: Paramètres obligatoires
+  ansible.builtin.assert:
+    that:
+      - platform_domain | length > 0
+      - platform_dir is match('^/[^ ]*[^/ ]$')
+      - platform_image_source in ['registry', 'archive', 'build']
+      - platform_expose in ['traefik', 'port']
+      - platform_expose != 'port' or platform_bind is match('^([0-9.]+:)?[0-9]{1,5}$')
+      - platform_traefik_router is match('^[A-Za-z0-9_-]+$')
+      - platform_traefik_entrypoints | length > 0
+      - platform_traefik_labels is mapping
+      - platform_proxy_network is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - ((platform_runner_client_cert ~ platform_runner_client_cert_file) | length > 0) == ((platform_runner_client_key ~ platform_runner_client_key_file) | length > 0)
+    fail_msg: >-
+      platform_domain est obligatoire ; platform_dir : chemin absolu (ex. /opt/tools) ; platform_image_source : registry | archive | build ;
+      platform_expose : traefik | port (platform_bind « ip:port ») ; certificat et clé Runner fournis ensemble.
+    quiet: true
+
+- name: Docker présent
+  ansible.builtin.command: docker version --format '{{ "{{" }}.Server.Version{{ "}}" }}'
+  register: platform_docker_version
+  changed_when: false
+  failed_when: platform_docker_version.rc != 0
+
+- name: Docker Compose v2 présent
+  ansible.builtin.command: docker compose version --short
+  register: platform_compose_version
+  changed_when: false
+  failed_when: platform_compose_version.rc != 0
+
+- name: Versions compatibles (Docker ≥ 24, Compose ≥ 2.24.4)
+  ansible.builtin.assert:
+    that:
+      - platform_docker_version.stdout is version('24', '>=')
+      - platform_compose_version.stdout | regex_replace('^v', '') is version('2.24.4', '>=')
+    fail_msg: "Docker {{ platform_docker_version.stdout }} / Compose {{ platform_compose_version.stdout }} : Docker 24 et Compose 2.24.4 au minimum"
+    quiet: true
+
+- name: Outils de l'hôte (openssl pour générer les secrets)
+  ansible.builtin.command: openssl version
+  changed_when: false

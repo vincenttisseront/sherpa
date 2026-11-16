@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Sauvegarde de la base de la console de déploiement
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ platform_dir }}
+Environment="COMPOSE={{ platform_compose | default('docker compose -p ' ~ platform_project ~ ' --project-directory ' ~ platform_dir ~ ' -f ' ~ platform_dir ~ '/docker-compose.yml -f ' ~ platform_dir ~ '/compose.ansible.yml') }}"
+Environment="BACKUP_KEEP={{ platform_backup_keep }}"
+ExecStart={{ platform_dir }}/backup.sh {{ platform_backup_dir }}

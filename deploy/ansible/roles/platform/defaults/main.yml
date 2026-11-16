@@ -1,0 +1,87 @@
+# --- Emplacement et projet Compose ---
+# Chemin absolu sur l'hôte (ex. /opt/tools). Changé sur une console déjà installée : les secrets de
+# l'ancien dossier sont repris (la base garde son mot de passe), l'ancien dossier est laissé en place.
+platform_dir: /opt/sherpa
+platform_project: sherpa
+# Ancien nom de la console (avant Sherpa) : installation, volumes et secrets repris automatiquement au
+# premier déploiement sous le nouveau nom (voir tasks/legacy.yml). Vide : aucune reprise.
+platform_legacy_project: portainer-platform
+platform_legacy_dir: /opt/portainer-platform
+# Dépôt de la console sur le poste qui lance Ansible (sources, docker-compose.yml, backup.sh).
+platform_repo_dir: "{{ playbook_dir }}/../.."
+
+# --- Image ---
+# registry : image publiée (platform_image_repository:platform_version) ;
+# archive  : image exportée sur ce poste (docker save), copiée puis chargée sur l'hôte ;
+# build    : sources du dépôt (git archive de platform_git_ref) construites sur l'hôte.
+platform_image_source: build
+platform_version: latest
+platform_image_repository: sherpa
+platform_image_archive: ""          # archive : chemin local d'un docker save (gzip accepté) ; vide → exporté depuis l'image locale
+platform_git_ref: HEAD
+platform_build_ca_file: ""          # build : AC d'entreprise pour npm (fichier local), facultatif
+platform_image: "{{ platform_image_repository }}:{{ platform_version }}"
+# Archives préparées sur le poste local (image exportée, sources).
+platform_cache_dir: "{{ playbook_dir }}/.cache"
+platform_local_archive: "{{ platform_cache_dir }}/image-{{ platform_version }}.tar.gz"
+platform_local_sources: "{{ platform_cache_dir }}/src-{{ platform_revision | default(platform_version) }}.tar.gz"
+
+# --- Exposition ---
+platform_domain: ""                 # obligatoire : domaine public, APP_URL = https://<domaine>
+platform_expose: traefik            # traefik | port
+platform_proxy_network: proxy       # traefik : réseau Docker partagé avec Traefik (créé s'il manque)
+platform_proxy_network_create: true # false : le réseau doit exister (créé par Traefik ou par l'exploitation)
+
+# --- Traefik (platform_expose: traefik) : labels du conteneur app ---
+platform_traefik_router: platform               # nom du routeur et du service Traefik
+platform_traefik_rule: "Host(`{{ platform_domain }}`)"
+platform_traefik_entrypoints: [websecure]
+platform_traefik_tls: true
+platform_traefik_certresolver: ""               # ex. letsencrypt (résolveur ACME de votre Traefik) ; vide : certificat par défaut
+platform_traefik_middlewares: []                # ex. [secure-headers@file]
+platform_traefik_priority: ""                   # vide : priorité calculée par Traefik
+# Labels supplémentaires ou remplaçant ceux générés (clé → valeur), ex. :
+#   traefik.http.routers.platform.tls.domains[0].main: interne.example
+platform_traefik_labels: {}
+platform_bind: "127.0.0.1:3000"     # port : adresse:port publié sur l'hôte (reverse proxy local)
+
+# --- Plages IP des réseaux Docker de la stack ---
+# Sans valeur, Docker choisit une plage libre en 172.17–31.x.x : elle peut recouvrir un réseau
+# joignant l'hôte (AWX, VPN, autre site), dont les réponses partent alors vers Docker au lieu de
+# l'interface physique. Fixer ici des plages hors de ces réseaux, ex. :
+#   platform_network_subnets: { internal: 10.250.1.0/24, runners: 10.250.2.0/24, proxy: 10.250.3.0/24 }
+# proxy : utilisé seulement si le réseau est créé par ce rôle (mode port, ou réseau Traefik absent).
+platform_network_subnets: {}
+# Plages réservées (AWX, VPN, réseaux d'administration…) : déploiement refusé si un réseau Docker de
+# l'hôte les recouvre, ex. ['172.24.0.0/16'].
+platform_avoid_subnets: []
+
+# --- Variables d'environnement supplémentaires (voir docs/installation.md) ---
+platform_env: {}
+
+# --- Secrets ---
+# Générés sur l'hôte au premier déploiement s'ils sont absents, jamais écrasés ensuite.
+# Pour les fournir (restauration, plusieurs consoles), les poser en ansible-vault :
+platform_master_key: ""             # base64 32 octets ; NE JAMAIS la changer sans rotation (docs/securite.md)
+platform_master_keys_previous: ""
+platform_db_password: ""
+platform_redis_password: ""
+platform_smtp_password: ""
+# Identité mTLS de la console vers les Target Runners (fichiers locaux) ; vide → Runners indisponibles.
+platform_runner_client_cert_file: ""
+platform_runner_client_key_file: ""
+# Ou leur contenu PEM (ansible-vault) : prioritaire sur les fichiers.
+platform_runner_client_cert: ""
+platform_runner_client_key: ""
+
+# --- Exploitation ---
+platform_backup_dir: "{{ platform_dir }}/backups"
+platform_backup_keep: 14
+platform_backup_timer: true         # sauvegarde quotidienne (timer systemd)
+platform_backup_on_calendar: "*-*-* 02:30:00"
+platform_backup_before_upgrade: true
+platform_wait_timeout: 300
+# Base existante dont le mot de passe diffère de secrets/db_password (secrets d'une autre installation) :
+# réalignée d'office si elle ne contient aucun secret chiffré ; true force le réalignement (les secrets
+# chiffrés avec l'ancienne clé maîtresse deviennent illisibles et sont à ressaisir).
+platform_db_password_realign: false

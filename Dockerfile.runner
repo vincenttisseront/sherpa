@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1.7
+# Target Runner : un seul fichier JavaScript autonome, sans dépendance installée.
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN --mount=type=secret,id=npm_ca,required=false \
+    if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
+    npm ci --ignore-scripts
+COPY runner ./runner
+COPY server/adapters/runner/types.ts ./server/adapters/runner/types.ts
+COPY server/lib ./server/lib
+COPY server/utils/path-guard.ts ./server/utils/path-guard.ts
+RUN npm run build:runner
+
+FROM node:24-alpine
+ENV NODE_ENV=production
+WORKDIR /opt/runner
+COPY --from=build /app/dist/runner.mjs ./runner.mjs
+# L'UID/GID d'exécution doit correspondre au propriétaire des racines sur l'hôte (voir docs/runner.md).
+USER node
+EXPOSE 8443
+HEALTHCHECK NONE
+CMD ["node", "runner.mjs"]

@@ -1,0 +1,355 @@
+- name: Commande Compose de la console
+  ansible.builtin.set_fact:
+    platform_compose: >-
+      docker compose -p {{ platform_project }} --project-directory {{ platform_dir }}
+      -f {{ platform_dir }}/docker-compose.yml -f {{ platform_dir }}/compose.ansible.yml
+
+# Reprise d'une installation sous l'ancien nom (conteneurs arrêtés, volumes copiés) avant tout réseau ou conteneur.
+- name: Reprise de l'installation sous l'ancien nom
+  ansible.builtin.import_tasks: legacy.yml
+
+# CLI Docker plutôt que docker_network : aucune bibliothèque Python requise sur l'hôte.
+- name: Réseau externe du Traefik présent ?
+  ansible.builtin.command: docker network inspect {{ platform_proxy_network | quote }}
+  register: platform_proxy_net
+  changed_when: false
+  failed_when: false
+  when: platform_expose == 'traefik'
+
+- name: Réseau externe du Traefik
+  ansible.builtin.command: >-
+    docker network create
+    {{ ('--subnet ' ~ (platform_network_subnets.proxy | quote)) if 'proxy' in platform_network_subnets else '' }}
+    {{ platform_proxy_network | quote }}
+  changed_when: true
+  when: platform_expose == 'traefik' and platform_proxy_net.rc != 0 and platform_proxy_network_create | bool
+
+- name: Réseau du Traefik absent
+  ansible.builtin.fail:
+    msg: "Réseau « {{ platform_proxy_network }} » introuvable sur l'hôte (platform_proxy_network_create: false) : le créer ou corriger platform_proxy_network."
+  when: platform_expose == 'traefik' and platform_proxy_net.rc != 0 and not platform_proxy_network_create | bool
+
+# --- Plages IP : pas de recouvrement avec les réseaux réservés, réseaux de la stack à jour ---
+- name: Recouvrements avec les plages réservées (calcul sur l'hôte)
+  # python3 (ipaddress) de l'hôte : aucune collection ni bibliothèque requise sur le poste de contrôle.
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      docker network ls -q | xargs -r docker network inspect --format '{{ '{{' }}.Name{{ '}}' }}{{ '{{' }}range .IPAM.Config{{ '}}' }} {{ '{{' }}.Subnet{{ '}}' }}{{ '{{' }}end{{ '}}' }}' \
+      | python3 -c '
+      import ipaddress, json, sys
+      avoid = [ipaddress.ip_network(a, strict=False) for a in json.loads(sys.argv[1])]
+      wanted = json.loads(sys.argv[2])
+      # Réseaux de la stack dont la plage est fixée : recréés plus loin, pas un conflit.
+      own = {sys.argv[3] + "_" + k for k in wanted} | ({sys.argv[3] + "-proxy"} if "proxy" in wanted else set())
+      out = []
+      for line in sys.stdin:
+          name, *nets = line.split()
+          if name in own:
+              continue
+          for n in nets:
+              net = ipaddress.ip_network(n, strict=False)
+              out += [f"{name} ({n}) recouvre {a}" for a in avoid if net.version == a.version and net.overlaps(a)]
+      for k, w in wanted.items():
+          net = ipaddress.ip_network(w, strict=False)
+          out += [f"platform_network_subnets.{k} ({w}) recouvre {a}" for a in avoid if net.version == a.version and net.overlaps(a)]
+      print("\n".join(out))
+      ' {{ platform_avoid_subnets | to_json | quote }} {{ platform_network_subnets | to_json | quote }} {{ platform_project | quote }}
+    executable: /bin/bash
+  register: platform_network_conflicts
+  changed_when: false
+  when: platform_avoid_subnets | length > 0
+
+- name: Aucun réseau Docker sur une plage réservée
+  ansible.builtin.assert:
+    that: platform_network_conflicts.stdout | default('') | length == 0
+    fail_msg: >-
+      Réseaux Docker sur une plage réservée (platform_avoid_subnets) : {{ platform_network_conflicts.stdout_lines | default([]) | join(' ; ') }}.
+      Fixer platform_network_subnets hors de ces plages. Pour un réseau qui n'appartient pas à la console : le supprimer
+      ou le recréer ailleurs. Prévention globale : « default-address-pools » dans /etc/docker/daemon.json.
+    quiet: true
+  when: platform_avoid_subnets | length > 0
+
+- name: Réseaux de la stack dont la plage diffère de celle demandée
+  ansible.builtin.shell:
+    cmd: >-
+      current=$(docker network inspect --format '{{ '{{' }}range .IPAM.Config{{ '}}' }}{{ '{{' }}.Subnet{{ '}}' }}{{ '{{' }}end{{ '}}' }}'
+      {{ (platform_project ~ '_' ~ item.key) | quote }} 2>/dev/null) || exit 0;
+      [ "$current" = {{ item.value | quote }} ] || echo "{{ item.key }} : $current → {{ item.value }}"
+  loop: "{{ platform_network_subnets | dict2items | rejectattr('key', 'equalto', 'proxy') | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: platform_net_current
+  changed_when: false
+
+# Compose ne modifie pas la plage d'un réseau existant : arrêt de la stack (données conservées)
+# pour recréer ses réseaux avec la plage demandée.
+- name: Arrêt de la stack pour recréer ses réseaux (plage modifiée)
+  ansible.builtin.command: "{{ platform_compose }} down --remove-orphans"
+  when: platform_net_current.results | default([]) | map(attribute='stdout') | select | list | length > 0
+  changed_when: true
+
+# Compose ne recrée pas les conteneurs quand seul le dossier change : ils monteraient encore les
+# secrets de l'ancien dossier. Arrêt puis recréation depuis platform_dir (volumes conservés).
+- name: Arrêt de la stack lancée depuis un autre dossier
+  ansible.builtin.command: "{{ platform_compose }} down --remove-orphans"
+  when: platform_previous_dirs.stdout_lines | default([]) | reject('equalto', platform_dir) | list | length > 0
+  changed_when: true
+
+- name: Image en service (mise à jour ?)
+  ansible.builtin.shell:
+    cmd: "{{ platform_compose }} ps --format '{{ '{{' }}.Image{{ '}}' }}' app 2>/dev/null || true"
+  register: platform_running_images
+  changed_when: false
+
+- name: Base existante
+  ansible.builtin.command: "{{ platform_compose }} ps -q postgres"
+  register: platform_pg_running
+  changed_when: false
+  failed_when: false
+
+- name: Sauvegarde avant mise à jour
+  ansible.builtin.command:
+    cmd: "{{ platform_dir }}/backup.sh {{ platform_backup_dir }}"
+    chdir: "{{ platform_dir }}"
+  environment:
+    COMPOSE: "{{ platform_compose }}"
+    BACKUP_KEEP: "{{ platform_backup_keep | string }}"
+  when:
+    - platform_backup_before_upgrade | bool
+    - platform_pg_running.stdout | length > 0
+    - platform_running_images.stdout | trim != platform_image
+  changed_when: true
+
+# Démarrage par étapes : chaque étape a son propre délai et, en cas d'échec, l'état des conteneurs
+# et leurs derniers logs sont affichés (au lieu d'une attente muette de compose --wait).
+- name: Démarrage de la console
+  block:
+    - name: Images PostgreSQL et Redis (téléchargées si absentes)
+      ansible.builtin.command: "{{ platform_compose }} pull --policy missing --quiet postgres redis"
+      register: platform_pull
+      changed_when: false
+      async: "{{ platform_wait_timeout }}"
+      poll: 5
+
+    - name: Démarrage de PostgreSQL et Redis
+      # Recréés seulement si leur configuration a changé (image, réseaux, alias).
+      ansible.builtin.command: "{{ platform_compose }} up -d postgres redis"
+      register: platform_up_data
+      changed_when: "'Created' in platform_up_data.stderr or 'Started' in platform_up_data.stderr or 'Recreated' in platform_up_data.stderr"
+
+    # Compose ne recrée pas un conteneur dont seul le contenu d'un fichier secret a changé (ex. stack
+    # créée auparavant avec d'autres secrets) : Redis doit accepter le mot de passe de l'hôte, passé
+    # sur l'entrée standard (aucune valeur affichée).
+    - name: Redis accepte le mot de passe de l'hôte
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          {{ platform_compose }} exec -T {{ item }} sh -c 'REDISCLI_AUTH="$(cat)" redis-cli ping'
+          < {{ platform_dir }}/secrets/redis_password | grep -q PONG
+        executable: /bin/bash
+      register: platform_secret_redis
+      changed_when: false
+      failed_when: false
+      loop: [redis]
+
+    - name: Conteneurs recréés (secret modifié depuis leur création)
+      ansible.builtin.command: "{{ platform_compose }} up -d --no-deps --force-recreate {{ item.item }}"
+      loop: "{{ platform_secret_redis.results | rejectattr('rc', 'equalto', 0) | list }}"
+      loop_control:
+        label: "{{ item.item }}"
+      changed_when: true
+
+    # État lu par docker inspect (service=healthy|starting|unhealthy, ou état du conteneur sans
+    # healthcheck) : indépendant de la version de Compose (ps --format modèle absent avant 2.21).
+    - name: PostgreSQL et Redis prêts (healthcheck)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          ids=$({{ platform_compose }} ps -a -q postgres redis);
+          if [ -z "$ids" ]; then echo "aucun conteneur"; else docker inspect -f '{{ '{{' }}index .Config.Labels "com.docker.compose.service"{{ '}}' }}={{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}{{ '{{' }}.State.Status{{ '}}' }}{{ '{{' }}end{{ '}}' }}' $ids; fi
+        executable: /bin/bash
+      register: platform_data_health
+      changed_when: false
+      retries: "{{ (platform_wait_timeout | int / 5) | int }}"
+      delay: 5
+      # Fin de l'attente dès que tout est prêt, ou qu'un service ne le sera pas (unhealthy, arrêté).
+      until: >-
+        (platform_data_health.stdout_lines | select('search', '=(healthy|running)$') | list | length == 2)
+        or (platform_data_health.stdout_lines | select('search', '=(unhealthy|exited|dead)$') | list | length > 0)
+      failed_when: platform_data_health.stdout_lines | select('search', '=(healthy|running)$') | list | length != 2
+
+    # Base existante créée avec d'autres secrets (dossier changé, secrets régénérés) : message clair
+    # plutôt qu'un échec d'authentification des migrations. Connexion par le réseau (« -h postgres »)
+    # pour passer par scram-sha-256 ; mot de passe lu sur l'entrée standard, jamais affiché.
+    - name: Mot de passe de la base reconnu par PostgreSQL
+      ansible.builtin.shell:
+        cmd: >-
+          {{ platform_compose }} exec -T postgres
+          sh -c 'PGPASSWORD="$(cat)" PGCONNECT_TIMEOUT=10 psql -h postgres -U platform -d platform -tAc "select 1"'
+          < {{ platform_dir }}/secrets/db_password
+        executable: /bin/bash
+      register: platform_db_auth
+      changed_when: false
+      failed_when: false
+
+    # Mot de passe refusé : la base vient d'une installation aux secrets différents. Recherche, sur
+    # l'hôte, des autres fichiers db_password acceptés par la base (chemins seuls affichés).
+    - name: Secrets d'une autre installation acceptés par la base
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          find / -xdev -maxdepth 6 \( -path /proc -o -path /sys -o -path /var/lib/docker \) -prune -o
+          -type f -path '*/secrets/db_password' -print 2>/dev/null | grep -vxF {{ (platform_dir ~ '/secrets/db_password') | quote }}
+          | while read -r f; do
+          {{ platform_compose }} exec -T postgres
+          sh -c 'PGPASSWORD="$(cat)" PGCONNECT_TIMEOUT=10 psql -h postgres -U platform -d platform -tAc "select 1"' < "$f" >/dev/null 2>&1
+          && echo "$(dirname "$f")"; done; true
+        executable: /bin/bash
+      register: platform_db_candidates
+      changed_when: false
+      when: platform_db_auth.rc != 0
+
+    # Socket locale de PostgreSQL (méthode trust) : état de la base sans mot de passe.
+    - name: Secrets chiffrés déjà présents en base
+      ansible.builtin.command: >-
+        {{ platform_compose }} exec -T postgres psql -X -U platform -d platform -tAc
+        "select case when to_regclass('public.secrets') is null then 0 else (select count(*) from public.secrets) end"
+      register: platform_db_encrypted
+      changed_when: false
+      when: platform_db_auth.rc != 0
+
+    # Base sans secret chiffré (instance vide) ou réalignement demandé : le mot de passe du rôle
+    # PostgreSQL devient celui du dossier (lu sur l'entrée standard, jamais affiché).
+    - name: Mot de passe de la base réaligné sur celui du dossier  # noqa: risky-shell-pipe (pipe dans le conteneur, psql en ON_ERROR_STOP)
+      ansible.builtin.shell:
+        cmd: >-
+          {{ platform_compose }} exec -T postgres
+          sh -c 'pw="$(cat)"; printf "%s\n" "ALTER ROLE platform PASSWORD :'\''pw'\'';"
+          | psql -X -q -v ON_ERROR_STOP=1 -U platform -d platform -v pw="$pw"'
+          < {{ platform_dir }}/secrets/db_password
+        executable: /bin/bash
+      when:
+        - platform_db_auth.rc != 0
+        - (platform_db_encrypted.stdout | trim | int) == 0 or platform_db_password_realign | bool
+      register: platform_db_realigned
+      changed_when: true
+
+    - name: Secrets cohérents avec la base existante
+      ansible.builtin.assert:
+        that: platform_db_auth.rc == 0 or platform_db_realigned is changed
+        fail_msg: >-
+          PostgreSQL refuse le mot de passe de {{ platform_dir }}/secrets/db_password et la base contient
+          {{ platform_db_encrypted.stdout | default('?') | trim }} secret(s) chiffré(s) par une autre clé maîtresse.
+          {% if platform_db_candidates.stdout_lines | default([]) | length > 0 %}Secrets acceptés par la base trouvés dans :
+          {{ platform_db_candidates.stdout_lines | join(', ') }}. Les reprendre : cp -a {{ platform_db_candidates.stdout_lines[0] }}/.
+          {{ platform_dir }}/secrets/ puis relancer.{% else %}Aucun autre dossier de secrets accepté trouvé sur l'hôte.{% endif %}
+          Pour garder la base en abandonnant ses secrets chiffrés (à ressaisir dans la console) :
+          relancer avec platform_db_password_realign: true.
+        quiet: true
+
+    - name: Migrations de la base
+      ansible.builtin.command: "timeout {{ platform_wait_timeout }} {{ platform_compose }} up --no-deps --exit-code-from migrate migrate"
+      register: platform_migrate
+      changed_when: false
+
+    - name: Application et worker
+      community.docker.docker_compose_v2:
+        project_src: "{{ platform_dir }}"
+        project_name: "{{ platform_project }}"
+        files: [docker-compose.yml, compose.ansible.yml]
+        state: present
+        # Images de la console : pull_policy de la surcharge ; PostgreSQL et Redis : déjà présentes.
+        pull: missing
+        build: never
+        remove_orphans: true
+        wait: false
+      register: platform_compose_up
+      # « migrate » s'exécute à chaque passage (migrations idempotentes) : seul le reste compte comme changement.
+      changed_when: platform_compose_up.actions | default([]) | rejectattr('id', 'search', '-migrate-') | list | length > 0
+
+    - name: Secret Redis de l'application et du worker identique à celui de l'hôte
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          {{ platform_compose }} exec -T {{ item }} cat /run/secrets/redis_password
+          | cmp -s - {{ platform_dir }}/secrets/redis_password
+        executable: /bin/bash
+      register: platform_secret_app
+      changed_when: false
+      failed_when: false
+      loop: [app, worker]
+
+    - name: Conteneurs recréés (secret modifié depuis leur création)
+      ansible.builtin.command: "{{ platform_compose }} up -d --no-deps --force-recreate {{ item.item }}"
+      loop: "{{ platform_secret_app.results | rejectattr('rc', 'equalto', 0) | list }}"
+      loop_control:
+        label: "{{ item.item }}"
+      changed_when: true
+
+    - name: Application et worker prêts (healthcheck)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          ids=$({{ platform_compose }} ps -a -q app worker);
+          if [ -z "$ids" ]; then echo "aucun conteneur"; else docker inspect -f '{{ '{{' }}index .Config.Labels "com.docker.compose.service"{{ '}}' }}={{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}{{ '{{' }}.State.Status{{ '}}' }}{{ '{{' }}end{{ '}}' }}' $ids; fi
+        executable: /bin/bash
+      register: platform_app_health
+      changed_when: false
+      retries: "{{ (platform_wait_timeout | int / 5) | int }}"
+      delay: 5
+      until: >-
+        (platform_app_health.stdout_lines | select('search', '=healthy$') | list | length == 2)
+        or (platform_app_health.stdout_lines | select('search', '=(unhealthy|exited|dead)$') | list | length > 0)
+      failed_when: platform_app_health.stdout_lines | select('search', '=healthy$') | list | length != 2
+
+  rescue:
+    - name: Diagnostic — état des conteneurs
+      ansible.builtin.command: "{{ platform_compose }} ps -a"
+      register: platform_diag_ps
+      changed_when: false
+      failed_when: false
+
+    - name: Diagnostic — derniers logs (jeton d'initialisation masqué)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          {{ platform_compose }} logs --no-color --tail 40 postgres redis migrate app worker 2>&1
+          | sed -E "s/(Jeton d'initialisation[^:]*: ).*/\1[masqué]/"
+        executable: /bin/bash
+      register: platform_diag_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Échec du démarrage
+      ansible.builtin.fail:
+        msg:
+          - "Étape en échec : {{ ansible_failed_task.name }}"
+          - "{{ ansible_failed_result.msg | default('') }}"
+          - "{{ (ansible_failed_result.stdout_lines | default([]))[-5:] }}"
+          - "État des conteneurs :"
+          - "{{ platform_diag_ps.stdout_lines | default([]) }}"
+          - "Derniers logs :"
+          - "{{ platform_diag_logs.stdout_lines | default([]) }}"
+
+- name: Santé de l'application
+  ansible.builtin.command: "{{ platform_compose }} exec -T app wget -qO- http://127.0.0.1:3000/api/health"
+  register: platform_health
+  retries: 10
+  delay: 3
+  until: platform_health.rc == 0
+  changed_when: false
+
+- name: Instance à initialiser ?
+  ansible.builtin.shell:
+    cmd: "set -o pipefail; {{ platform_compose }} logs --no-log-prefix app 2>/dev/null | grep -c \"Jeton d'initialisation\" || true"
+    executable: /bin/bash
+  register: platform_setup_pending
+  changed_when: false
+
+- name: Console déployée
+  ansible.builtin.debug:
+    msg:
+      - "Image : {{ platform_image }} — santé : {{ platform_health.stdout | default('') }}"
+      - "URL : https://{{ platform_domain }}{{ ' (via le reverse proxy local → ' ~ platform_bind ~ ')' if platform_expose == 'port' else '' }}"
+      - "{{ 'Premier démarrage : jeton d’initialisation dans les logs de l’hôte → ' ~ platform_compose ~ ' logs app | grep \"Jeton d’initialisation\"' if (platform_setup_pending.stdout | int) > 0 else 'Instance déjà initialisée.' }}"

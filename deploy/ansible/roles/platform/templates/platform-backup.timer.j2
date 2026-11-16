@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Sauvegarde quotidienne de la console de déploiement
+
+[Timer]
+OnCalendar={{ platform_backup_on_calendar }}
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

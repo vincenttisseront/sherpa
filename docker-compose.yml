@@ -1,0 +1,190 @@
+# Déploiement de la plateforme (production). HTTPS assuré par le reverse proxy (Traefik) en amont.
+# Prérequis (voir docs/installation.md) :
+#   - fichiers secrets/ : master_key, master_keys_previous (vide hors rotation), db_password,
+#     redis_password, smtp_password (vide si SMTP sans authentification), runner-client.crt/.key ;
+#   - variables : APP_DOMAIN (obligatoire) et, au besoin, celles listées dans x-app-env ;
+#   - réseau externe « proxy » partagé avec Traefik.
+name: sherpa
+
+x-app-env: &app-env
+  NODE_ENV: production
+  APP_URL: https://${APP_DOMAIN:?APP_DOMAIN requis}
+  COOKIE_SECURE: "true"
+  # Noms propres à la console : l'app est aussi sur le réseau « proxy », partagé avec d'autres stacks
+  # dont les services « postgres » ou « redis » y seraient résolus à la place des nôtres.
+  DATABASE_URL: postgres://platform@platform-postgres:5432/platform
+  DATABASE_PASSWORD_FILE: /run/secrets/db_password
+  REDIS_URL: redis://platform-redis:6379
+  REDIS_PASSWORD_FILE: /run/secrets/redis_password
+  MASTER_KEY_FILE: /run/secrets/master_key
+  MASTER_KEY_ID: ${MASTER_KEY_ID:-k1}
+  MASTER_KEYS_PREVIOUS_FILE: /run/secrets/master_keys_previous
+  PORTAINER_ADAPTER: http
+  PORTAINER_TIMEOUT_MS: ${PORTAINER_TIMEOUT_MS:-10000}
+  RUNNER_ADAPTER: http
+  RUNNER_CLIENT_CERT_FILE: /run/secrets/runner_client_cert
+  RUNNER_CLIENT_KEY_FILE: /run/secrets/runner_client_key
+  UPLOAD_DIR: /var/lib/platform/uploads
+  UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-512}
+  GITHUB_ALLOWED_API_URLS: ${GITHUB_ALLOWED_API_URLS:-https://api.github.com}
+  WATCHTOWER_IMAGE: ${WATCHTOWER_IMAGE:-nickfedor/watchtower:1.23.0}
+  # Hôtes SSH : image d'appoint qui crée les répertoires que le compte SSH ne peut pas créer (miroir interne possible).
+  HOST_HELPER_IMAGE: ${HOST_HELPER_IMAGE:-busybox:1.37}
+  # URL de la plateforme vue depuis les serveurs cibles (défaut : APP_URL).
+  WATCHTOWER_HOOK_BASE_URL: ${WATCHTOWER_HOOK_BASE_URL:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+  SMTP_FROM: ${SMTP_FROM:-Sherpa <noreply@localhost>}
+  NOTIFY_WEBHOOK_ALLOWED_HOSTS: ${NOTIFY_WEBHOOK_ALLOWED_HOSTS:-*.webhook.office.com,*.logic.azure.com,*.api.powerplatform.com}
+  RETENTION_DAYS: ${RETENTION_DAYS:-183}
+  SESSION_IDLE_MIN: ${SESSION_IDLE_MIN:-60}
+  SESSION_MAX_HOURS: ${SESSION_MAX_HOURS:-12}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+
+x-app-secrets: &app-secrets [master_key, master_keys_previous, db_password, redis_password, smtp_password, runner_client_cert, runner_client_key]
+
+# Conteneurs applicatifs : système de fichiers en lecture seule, aucun privilège.
+x-hardening: &hardening
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: { max-size: 20m, max-file: "5" }
+
+services:
+  migrate:
+    image: sherpa:${APP_VERSION:-latest}
+    build: .
+    command: ["node", "dist/migrate.mjs"]
+    environment: *app-env
+    secrets: *app-secrets
+    <<: [*hardening, *logging]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal]
+    restart: "no"
+
+  app:
+    image: sherpa:${APP_VERSION:-latest}
+    environment:
+      <<: *app-env
+      NUXT_HOST: 0.0.0.0
+      NUXT_PORT: 3000
+    secrets: *app-secrets
+    <<: [*hardening, *logging]
+    volumes:
+      - uploads:/var/lib/platform/uploads
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    networks: [internal, proxy, runners]
+    # Hôte de la console joignable en SSH sous ce nom (« localhost » désigne le conteneur).
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.platform.rule: Host(`${APP_DOMAIN}`)
+      traefik.http.routers.platform.entrypoints: websecure
+      traefik.http.routers.platform.tls: "true"
+      traefik.http.services.platform.loadbalancer.server.port: "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    image: sherpa:${APP_VERSION:-latest}
+    command: ["node", "dist/worker.mjs"]
+    environment: *app-env
+    secrets: *app-secrets
+    <<: [*hardening, *logging]
+    volumes:
+      - uploads:/var/lib/platform/uploads
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    # Accès sortant vers les Portainer, les Runners, SMTP et Teams.
+    networks: [internal, runners]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    healthcheck:
+      # Témoin renouvelé toutes les 20 s par le worker.
+      test: ["CMD-SHELL", "find /tmp/worker-alive -mmin -1 | grep -q ."]
+      interval: 30s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: platform
+    secrets: [db_password]
+    <<: *logging
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      internal:
+        aliases: [platform-postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform"]
+      interval: 5s
+      retries: 10
+    shm_size: 256m
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    # Mot de passe lu dans le secret, jamais passé en argument visible.
+    entrypoint: ["sh", "-c", "printf 'requirepass %s\\nappendonly yes\\n' \"$$(cat /run/secrets/redis_password)\" > /tmp/redis.conf && exec redis-server /tmp/redis.conf"]
+    secrets: [redis_password]
+    <<: *logging
+    volumes:
+      - redisdata:/data
+    networks:
+      internal:
+        aliases: [platform-redis]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$(cat /run/secrets/redis_password) redis-cli ping | grep -q PONG"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+secrets:
+  master_key:
+    file: ./secrets/master_key
+  master_keys_previous:
+    file: ./secrets/master_keys_previous
+  db_password:
+    file: ./secrets/db_password
+  redis_password:
+    file: ./secrets/redis_password
+  smtp_password:
+    file: ./secrets/smtp_password
+  runner_client_cert:
+    file: ./secrets/runner-client.crt
+  runner_client_key:
+    file: ./secrets/runner-client.key
+
+networks:
+  internal:
+    internal: true
+  proxy:
+    external: true
+  # Réseau avec sortie vers les serveurs cibles (Portainer, Runners), SMTP et Teams.
+  runners: {}
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

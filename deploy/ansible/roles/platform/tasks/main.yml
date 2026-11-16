@@ -1,0 +1,23 @@
+- name: Vérifications préalables
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [platform, preflight]
+
+- name: Fichiers de la console
+  ansible.builtin.import_tasks: files.yml
+  tags: [platform, files]
+
+- name: Secrets
+  ansible.builtin.import_tasks: secrets.yml
+  tags: [platform, secrets]
+
+- name: Image
+  ansible.builtin.import_tasks: image.yml
+  tags: [platform, image]
+
+- name: Déploiement
+  ansible.builtin.import_tasks: deploy.yml
+  tags: [platform, deploy]
+
+- name: Sauvegardes
+  ansible.builtin.import_tasks: backup.yml
+  tags: [platform, backup]

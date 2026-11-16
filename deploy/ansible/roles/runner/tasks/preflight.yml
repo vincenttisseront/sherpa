@@ -1,0 +1,34 @@
+- name: Paramètres obligatoires
+  ansible.builtin.assert:
+    that:
+      - runner_bind_ip | length > 0
+      - runner_bind_ip != '0.0.0.0'
+      - runner_image_source in ['registry', 'archive', 'build']
+      - (runner_tls_cert | length > 0) or (runner_tls_cert_file | length > 0)
+      - (runner_tls_key | length > 0) or (runner_tls_key_file | length > 0)
+      - (runner_client_ca | length > 0) or (runner_client_ca_file | length > 0)
+      - runner_roots | length > 0
+      # Chemin absolu ; un seul niveau seulement pour un dossier dédié (ex. /tools), pas un dossier partagé.
+      - runner_roots | reject('match', '^/[^/]+') | list | length == 0
+      - runner_roots | map('regex_replace', '/+$', '') | select('in', ['/srv', '/opt', '/home', '/mnt', '/media', '/var', '/tmp', '/data', '/nix']) | list | length == 0
+    fail_msg: >-
+      runner_bind_ip (interface d'administration, pas 0.0.0.0), le certificat serveur, sa clé et l'AC des clients
+      (runner_tls_cert[_file], runner_tls_key[_file], runner_client_ca[_file]) sont obligatoires ; chaque racine doit être un chemin absolu, ni « / » ni un dossier partagé (/srv, /opt, /home…) : sous-dossier dédié (/srv/deployments) ou dossier propre (/tools).
+    quiet: true
+
+- name: Docker et Compose v2 présents
+  ansible.builtin.command: docker compose version --short
+  register: runner_compose_version
+  changed_when: false
+
+- name: Version de Compose (≥ 2.24)
+  ansible.builtin.assert:
+    that: runner_compose_version.stdout | regex_replace('^v', '') is version('2.24', '>=')
+    fail_msg: "Compose {{ runner_compose_version.stdout }} : 2.24 au minimum"
+    quiet: true
+
+- name: Groupe docker de l'hôte (accès au socket pour les builds)
+  ansible.builtin.getent:
+    database: group
+    key: docker
+  when: runner_docker_build | bool

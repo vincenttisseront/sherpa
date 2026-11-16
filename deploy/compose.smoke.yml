@@ -1,0 +1,15 @@
+# Essai local de la configuration de production (scripts/prod-smoke.sh) : même fichier
+# docker-compose.yml, image déjà construite, port local au lieu de Traefik.
+services:
+  migrate:
+    build: !reset null
+    pull_policy: never
+  app:
+    pull_policy: never
+    ports: ["127.0.0.1:3200:3000"]
+  worker:
+    pull_policy: never
+networks:
+  proxy:
+    external: false
+    name: pp-prod-smoke-proxy

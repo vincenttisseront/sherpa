@@ -1,0 +1,35 @@
+# Copier en hosts.yml (non versionné) et adapter. Les secrets éventuels vont dans un
+# fichier chiffré par ansible-vault (group_vars/platform/vault.yml), jamais en clair ici.
+all:
+  children:
+    platform:
+      hosts:
+        deploy-console:
+          ansible_host: 10.0.0.10
+          ansible_user: admin
+      vars:
+        ansible_become: true
+        platform_domain: deploy.interne.example
+        # registry : image publiée ; archive : image exportée depuis ce poste ; build : sources du dépôt.
+        platform_image_source: build
+        platform_version: "{{ lookup('ansible.builtin.pipe', 'git -C ' ~ playbook_dir ~ '/../.. rev-parse --short HEAD') }}"
+        # traefik : réseau externe « proxy » d'un Traefik existant ; port : port local derrière un autre reverse proxy.
+        platform_expose: traefik
+        platform_env:
+          SMTP_HOST: smtp.interne.example
+          SMTP_FROM: "Sherpa <deploy@interne.example>"
+    # Hôtes cibles : Target Runner (runners.yml).
+    runners:
+      hosts:
+        app-01:
+          ansible_host: 10.0.1.21
+          runner_bind_ip: 10.0.1.21          # interface d'administration
+          runner_tls_cert_file: pki/app-01.crt
+          runner_tls_key_file: pki/app-01.key
+          # runner_hmac_key : dans host_vars/app-01/vault.yml (ansible-vault), après enregistrement dans la console
+      vars:
+        ansible_user: admin
+        ansible_become: true
+        runner_image_source: build
+        runner_version: "{{ lookup('ansible.builtin.pipe', 'git -C ' ~ playbook_dir ~ '/../.. rev-parse --short HEAD') }}"
+        runner_client_ca_file: pki/platform-ca.crt   # AC du certificat client de la console

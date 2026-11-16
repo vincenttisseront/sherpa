@@ -1,0 +1,2 @@
+ALTER TABLE "watchtower_profiles" ADD COLUMN "registries_secret_id" uuid;--> statement-breakpoint
+ALTER TABLE "watchtower_profiles" ADD CONSTRAINT "watchtower_profiles_registries_secret_id_secrets_id_fk" FOREIGN KEY ("registries_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;

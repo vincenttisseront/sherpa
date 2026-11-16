@@ -1,0 +1,52 @@
+# {{ ansible_managed }}
+# Target Runner (voir deploy/runner.compose.yml et docs/runner.md). Les racines sont montées
+# AUX MÊMES CHEMINS que sur l'hôte : chemins vus par la console et par Docker identiques.
+name: {{ runner_project }}
+
+services:
+  runner:
+    image: {{ runner_image }}
+    pull_policy: {{ 'missing' if runner_image_source == 'registry' else 'never' }}
+    user: "{{ runner_uid }}:{{ runner_gid }}"
+    environment:
+      NODE_ENV: production
+      RUNNER_PORT: "{{ runner_port }}"
+      RUNNER_ROOTS: "{{ runner_roots | join(',') }}"
+      RUNNER_HMAC_KEY_FILE: /run/secrets/runner_hmac
+      RUNNER_TLS_CERT_FILE: /run/secrets/runner_cert
+      RUNNER_TLS_KEY_FILE: /run/secrets/runner_key
+      RUNNER_CLIENT_CA_FILE: /run/secrets/platform_ca
+{% if not runner_docker_build | bool %}
+      RUNNER_DOCKER_SOCKET: ""
+{% endif %}
+{% for k, v in runner_env | dictsort %}
+      {{ k }}: {{ v | string | to_json }}
+{% endfor %}
+    secrets: [runner_hmac, runner_cert, runner_key, platform_ca]
+{% if runner_docker_build | bool %}
+    # Build : accès au moteur Docker local (groupe docker de l'hôte).
+    group_add: ["{{ runner_docker_gid }}"]
+{% endif %}
+    volumes:
+{% if runner_docker_build | bool %}
+      - /var/run/docker.sock:/var/run/docker.sock
+{% endif %}
+{% for r in runner_roots %}
+      - {{ r }}:{{ r }}
+{% endfor %}
+    ports:
+      # Exposé uniquement sur l'interface du réseau d'administration.
+      - "{{ runner_bind_ip }}:{{ runner_port }}:{{ runner_port }}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: 20m, max-file: "5" }
+    restart: unless-stopped
+
+secrets:
+  runner_hmac: { file: ./secrets/hmac.key }
+  runner_cert: { file: ./secrets/runner.crt }
+  runner_key: { file: ./secrets/runner.key }
+  platform_ca: { file: ./secrets/platform-ca.crt }

@@ -1,0 +1,62 @@
+# {{ ansible_managed }}
+# Surcharge de docker-compose.yml propre à cet hôte : image et exposition.
+services:
+  migrate:
+    image: {{ platform_image }}
+    build: !reset null
+    pull_policy: {{ 'missing' if platform_image_source == 'registry' else 'never' }}
+  app:
+    image: {{ platform_image }}
+    pull_policy: {{ 'missing' if platform_image_source == 'registry' else 'never' }}
+{% if platform_expose == 'port' %}
+    # Derrière un reverse proxy de l'hôte (HTTPS assuré par lui).
+    ports: ["{{ platform_bind }}:3000"]
+    labels: !override
+      traefik.enable: "false"
+{% else %}
+    # Labels Traefik : remplacent ceux de docker-compose.yml (routeur, règle, TLS, réseau).
+{%   set r = platform_traefik_router %}
+{%   set labels = {
+       'traefik.enable': 'true',
+       'traefik.docker.network': platform_proxy_network,
+       'traefik.http.routers.' ~ r ~ '.rule': platform_traefik_rule,
+       'traefik.http.routers.' ~ r ~ '.entrypoints': platform_traefik_entrypoints | join(','),
+       'traefik.http.routers.' ~ r ~ '.tls': platform_traefik_tls | bool | string | lower,
+       'traefik.http.routers.' ~ r ~ '.service': r,
+       'traefik.http.services.' ~ r ~ '.loadbalancer.server.port': '3000',
+     } %}
+{%   if platform_traefik_certresolver | length > 0 %}{% set _ = labels.update({'traefik.http.routers.' ~ r ~ '.tls.certresolver': platform_traefik_certresolver}) %}{% endif %}
+{%   if platform_traefik_middlewares | length > 0 %}{% set _ = labels.update({'traefik.http.routers.' ~ r ~ '.middlewares': platform_traefik_middlewares | join(',')}) %}{% endif %}
+{%   if platform_traefik_priority | string | length > 0 %}{% set _ = labels.update({'traefik.http.routers.' ~ r ~ '.priority': platform_traefik_priority | string}) %}{% endif %}
+{%   set _ = labels.update(platform_traefik_labels) %}
+    labels: !override
+{%   for k, v in labels | dictsort %}
+      {{ k | to_json }}: {{ v | string | to_json }}
+{%   endfor %}
+{% endif %}
+  worker:
+    image: {{ platform_image }}
+    pull_policy: {{ 'missing' if platform_image_source == 'registry' else 'never' }}
+{% set subnets = platform_network_subnets %}
+networks:
+{% for n in ['internal', 'runners'] if n in subnets %}
+  {{ n }}:
+    ipam:
+      config:
+        - subnet: {{ subnets[n] }}
+{% endfor %}
+{% if platform_expose == 'port' %}
+  # Pas de Traefik : réseau local à la place du réseau externe « proxy ».
+  proxy:
+    external: false
+    name: {{ platform_project }}-proxy
+{%   if 'proxy' in subnets %}
+    ipam:
+      config:
+        - subnet: {{ subnets.proxy }}
+{%   endif %}
+{% else %}
+  proxy:
+    external: true
+    name: {{ platform_proxy_network }}
+{% endif %}

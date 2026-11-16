@@ -1,0 +1,54 @@
+- name: Fichier Compose du Runner
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ runner_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: runner_compose_file
+
+- name: En attente de la clé HMAC
+  ansible.builtin.debug:
+    msg:
+      - "Runner préparé, non démarré : la clé HMAC manque."
+      - "1. Console → fiche du serveur → onglet Target Runner : URL https://{{ runner_bind_ip }}:{{ runner_port }} (nom du certificat serveur) et AC du Runner."
+      - "2. Copier la clé HMAC affichée une seule fois dans runner_hmac_key (ansible-vault), puis relancer ce playbook."
+  when: runner_hmac_key | length == 0
+
+- name: Démarrage du Runner
+  community.docker.docker_compose_v2:
+    project_src: "{{ runner_dir }}"
+    project_name: "{{ runner_project }}"
+    files: [compose.yml]
+    state: present
+    pull: missing
+    build: never
+    # Secrets montés depuis des fichiers : un changement de contenu exige une recréation.
+    recreate: "{{ 'always' if runner_secrets_changed | bool else 'auto' }}"
+    remove_orphans: true
+  when: runner_hmac_key | length > 0
+
+- name: Runner à l'écoute (pas de redémarrage en boucle)
+  ansible.builtin.command: docker inspect -f '{{ "{{" }}.State.Status{{ "}}" }} {{ "{{" }}.RestartCount{{ "}}" }}' {{ runner_project }}-runner-1
+  register: runner_state
+  retries: 10
+  delay: 3
+  until: runner_state.stdout is match('^running 0$')
+  changed_when: false
+  when: runner_hmac_key | length > 0
+
+- name: Port TLS ouvert
+  ansible.builtin.wait_for:
+    host: "{{ runner_bind_ip }}"
+    port: "{{ runner_port }}"
+    timeout: 30
+  when: runner_hmac_key | length > 0
+
+- name: Runner déployé
+  ansible.builtin.debug:
+    msg:
+      - "Runner : https://{{ runner_bind_ip }}:{{ runner_port }} — image {{ runner_image }}"
+      - "Racines : {{ runner_roots | join(', ') }} (propriétaire {{ runner_user }}, {{ runner_uid }}:{{ runner_gid }})"
+      - "Empreinte HMAC : {{ runner_hmac_fingerprint.stdout | default('') }} (doit être celle indiquée par la console)"
+      - "Console → onglet Target Runner → « Lancer le diagnostic » pour valider mTLS, signature, chemins et extraction."
+  when: runner_hmac_key | length > 0

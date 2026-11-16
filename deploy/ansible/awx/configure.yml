@@ -1,0 +1,289 @@
+# Configuration AWX / AAP « en code » : identifiants, projet, inventaire, modèles de tâche et workflow.
+# Idempotent : relancer après chaque changement de variables. Deux façons de le lancer :
+#
+# 1. Depuis un poste :
+#      cd deploy/ansible && ansible-galaxy collection install awx.awx -p collections
+#      export CONTROLLER_HOST=https://awx.interne.example CONTROLLER_OAUTH_TOKEN=…
+#      ansible-playbook awx/configure.yml -e @awx/vars.yml -e @awx/vault.yml --ask-vault-pass
+#
+# 2. Comme modèle de tâche dans AWX (voir README, section AWX) : identifiant « Red Hat Ansible
+#    Automation Platform » attaché (accès à l'API d'AWX), variables de awx/vars.example.yml en
+#    variables supplémentaires, et awx_manage_credentials: false (identifiants créés à la main
+#    dans AWX : les secrets ne passent pas par un fichier).
+- name: Configuration AWX de Sherpa
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    awx_credential_scm: "{{ awx_project_name }} — GitHub"
+    awx_credential_ssh: "{{ awx_project_name }} — SSH déploiement"
+    awx_credential_vault: "{{ awx_project_name }} — Vault"
+    awx_jt_platform: Console — déployer
+    awx_jt_runners: Runners — déployer
+    awx_jt_backup: Console — sauvegarder
+    awx_wf_upgrade: Plateforme — mise à jour complète
+    awx_playbook_dir: deploy/ansible
+    # false : identifiants créés à la main dans AWX (recommandé quand ce playbook tourne DANS AWX).
+    awx_manage_credentials: true
+    # Hôtes à plat : [{ name, group, vars }].
+    awx_host_list: >-
+      {%- set out = [] -%}
+      {%- for group, hosts in awx_hosts.items() -%}
+      {%- for name, hv in (hosts | default({}, true)).items() -%}
+      {%- set _ = out.append({'name': name, 'group': group, 'vars': hv | default({}, true)}) -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ out }}
+  module_defaults:
+    group/awx.awx.controller:
+      validate_certs: "{{ awx_validate_certs | default(true) }}"
+  tasks:
+    # --- Contrôles préalables (sans aucun secret : les tâches suivantes masquent leur sortie) ---
+    - name: Accès à l'API d'AWX
+      ansible.builtin.assert:
+        that: >-
+          (controller_host | default('') | length > 0)
+          or (lookup('ansible.builtin.env', 'CONTROLLER_HOST') | length > 0)
+          or (lookup('ansible.builtin.env', 'TOWER_HOST') | length > 0)
+        fail_msg: >-
+          Adresse d'AWX inconnue. Dans AWX : attacher au modèle un identifiant de type
+          « Red Hat Ansible Automation Platform » (hôte et jeton de l'API). Depuis un poste :
+          exporter CONTROLLER_HOST et CONTROLLER_OAUTH_TOKEN (ou CONTROLLER_USERNAME / CONTROLLER_PASSWORD).
+        quiet: true
+
+    - name: Variables obligatoires
+      ansible.builtin.assert:
+        that:
+          - awx_organization is defined
+          - awx_project_name is defined
+          - awx_scm_url is defined
+          - awx_inventory_name is defined
+          - awx_hosts is mapping
+          - awx_execution_environment is defined
+        fail_msg: "Variables manquantes : reprendre awx/vars.example.yml (variables supplémentaires du modèle dans AWX, ou -e @awx/vars.yml)."
+        quiet: true
+
+    - name: Secrets requis pour créer les identifiants
+      ansible.builtin.assert:
+        that:
+          - awx_github_token | default('') | length > 0
+          - awx_vault_password | default('') | length > 0
+          - (awx_ssh_key_data | default('') | length > 0) or (awx_ssh_key_file | default('') | length > 0)
+          - awx_github_user | default('') | length > 0
+          - awx_ssh_user | default('') | length > 0
+        fail_msg: >-
+          awx_manage_credentials est vrai mais il manque awx_github_user / awx_github_token, awx_ssh_user /
+          awx_ssh_key_data (ou awx_ssh_key_file) ou awx_vault_password. Dans AWX, créer plutôt les trois
+          identifiants à la main (noms dans le README) et lancer avec awx_manage_credentials: false.
+        quiet: true
+      when: awx_manage_credentials | bool
+
+    - name: Identifiants existants dans AWX (créés à la main)
+      ansible.builtin.set_fact:
+        awx_existing_credentials: >-
+          {{ query('awx.awx.controller_api', 'credentials', query_params={'organization__name': awx_organization}, return_all=true)
+             | map(attribute='name') | list }}
+      when: not awx_manage_credentials | bool
+
+    - name: Les trois identifiants sont présents
+      ansible.builtin.assert:
+        that: item in awx_existing_credentials
+        fail_msg: "Identifiant « {{ item }} » introuvable dans l'organisation {{ awx_organization }} : le créer dans AWX (README, section AWX)."
+        quiet: true
+      loop: ["{{ awx_credential_scm }}", "{{ awx_credential_ssh }}", "{{ awx_credential_vault }}"]
+      when: not awx_manage_credentials | bool
+
+    # --- Identifiants (valeurs jamais affichées) ---
+    - name: Identifiant GitHub (lecture du dépôt)
+      awx.awx.credential:
+        name: "{{ awx_credential_scm }}"
+        organization: "{{ awx_organization }}"
+        credential_type: Source Control
+        inputs:
+          username: "{{ awx_github_user }}"
+          password: "{{ awx_github_token }}"
+      no_log: true
+      when: awx_manage_credentials | bool
+
+    - name: Identifiant SSH (compte de déploiement, sudo)
+      awx.awx.credential:
+        name: "{{ awx_credential_ssh }}"
+        organization: "{{ awx_organization }}"
+        credential_type: Machine
+        inputs:
+          username: "{{ awx_ssh_user }}"
+          ssh_key_data: "{{ awx_ssh_key_data | default('', true) or lookup('ansible.builtin.file', awx_ssh_key_file) }}"
+          become_method: sudo
+      no_log: true
+      when: awx_manage_credentials | bool
+
+    - name: Identifiant Vault (variables chiffrées)
+      awx.awx.credential:
+        name: "{{ awx_credential_vault }}"
+        organization: "{{ awx_organization }}"
+        credential_type: Vault
+        inputs:
+          vault_password: "{{ awx_vault_password }}"
+      no_log: true
+      when: awx_manage_credentials | bool
+
+    # --- Projet ---
+    - name: Projet (dépôt de la plateforme)
+      awx.awx.project:
+        name: "{{ awx_project_name }}"
+        organization: "{{ awx_organization }}"
+        scm_type: git
+        scm_url: "{{ awx_scm_url }}"
+        scm_branch: "{{ awx_scm_branch }}"
+        credential: "{{ awx_credential_scm }}"
+        scm_update_on_launch: true
+        scm_clean: true
+        # Déployer une autre branche, un tag ou un commit depuis le modèle de tâche.
+        allow_override: true
+        default_environment: "{{ awx_execution_environment }}"
+        wait: true
+
+    # --- Inventaire ---
+    - name: Inventaire
+      awx.awx.inventory:
+        name: "{{ awx_inventory_name }}"
+        organization: "{{ awx_organization }}"
+
+    - name: Hôtes et leurs variables
+      awx.awx.host:
+        name: "{{ item.name }}"
+        inventory: "{{ awx_inventory_name }}"
+        variables: "{{ item.vars }}"
+      loop: "{{ awx_host_list }}"
+      loop_control:
+        label: "{{ item.group }} / {{ item.name }}"
+
+    - name: Groupes (console, hôtes cibles), variables et membres
+      awx.awx.group:
+        name: "{{ item }}"
+        inventory: "{{ awx_inventory_name }}"
+        variables: "{{ awx_group_vars[item] | default({}) }}"
+        hosts: "{{ awx_host_list | selectattr('group', 'equalto', item) | map(attribute='name') | list }}"
+        preserve_existing_hosts: false
+      loop: [platform, runners]
+
+    # --- Modèles de tâche ---
+    - name: Modèle « Console — déployer »
+      awx.awx.job_template:
+        name: "{{ awx_jt_platform }}"
+        description: Installe ou met à jour la console (migrations, app, worker, PostgreSQL, Redis)
+        organization: "{{ awx_organization }}"
+        project: "{{ awx_project_name }}"
+        playbook: "{{ awx_playbook_dir }}/site.yml"
+        inventory: "{{ awx_inventory_name }}"
+        execution_environment: "{{ awx_execution_environment }}"
+        credentials: ["{{ awx_credential_ssh }}", "{{ awx_credential_vault }}"]
+        job_type: run
+        limit: platform
+        become_enabled: true
+        ask_scm_branch_on_launch: true
+        ask_limit_on_launch: true
+        ask_diff_mode_on_launch: true
+        ask_job_type_on_launch: true          # « check » : simulation
+        survey_enabled: true
+        survey_spec:
+          name: Déploiement de la console
+          description: ""
+          spec:
+            - question_name: Version (tag de l'image)
+              question_description: Ex. le commit court déployé ; une nouvelle valeur reconstruit ou récupère l'image
+              variable: platform_version
+              type: text
+              required: true
+              min: 1
+              max: 64
+            - question_name: Source de l'image
+              question_description: build = sources du projet construites sur l'hôte ; registry = image publiée
+              variable: platform_image_source
+              type: multiplechoice
+              choices: [build, registry]
+              default: build
+              required: true
+            - question_name: Sauvegarder la base avant la mise à jour
+              variable: platform_backup_before_upgrade
+              type: multiplechoice
+              choices: ["true", "false"]
+              default: "true"
+              required: true
+
+    - name: Modèle « Runners — déployer »
+      awx.awx.job_template:
+        name: "{{ awx_jt_runners }}"
+        description: Installe ou met à jour le Target Runner des hôtes cibles
+        organization: "{{ awx_organization }}"
+        project: "{{ awx_project_name }}"
+        playbook: "{{ awx_playbook_dir }}/runners.yml"
+        inventory: "{{ awx_inventory_name }}"
+        execution_environment: "{{ awx_execution_environment }}"
+        credentials: ["{{ awx_credential_ssh }}", "{{ awx_credential_vault }}"]
+        job_type: run
+        limit: runners
+        become_enabled: true
+        ask_scm_branch_on_launch: true
+        ask_limit_on_launch: true             # un seul hôte : limiter à son nom
+        ask_job_type_on_launch: true
+        survey_enabled: true
+        survey_spec:
+          name: Déploiement des Runners
+          description: ""
+          spec:
+            - question_name: Version (tag de l'image du Runner)
+              variable: runner_version
+              type: text
+              required: true
+              min: 1
+              max: 64
+            - question_name: Source de l'image
+              variable: runner_image_source
+              type: multiplechoice
+              choices: [build, registry]
+              default: build
+              required: true
+
+    - name: Modèle « Console — sauvegarder »
+      awx.awx.job_template:
+        name: "{{ awx_jt_backup }}"
+        description: Sauvegarde immédiate de la base de la console (pg_dump vérifié)
+        organization: "{{ awx_organization }}"
+        project: "{{ awx_project_name }}"
+        playbook: "{{ awx_playbook_dir }}/backup.yml"
+        inventory: "{{ awx_inventory_name }}"
+        execution_environment: "{{ awx_execution_environment }}"
+        credentials: ["{{ awx_credential_ssh }}", "{{ awx_credential_vault }}"]
+        job_type: run
+        limit: platform
+        become_enabled: true
+
+    # --- Workflow : sauvegarde, console, puis Runners ---
+    - name: Workflow « mise à jour complète »
+      awx.awx.workflow_job_template:
+        name: "{{ awx_wf_upgrade }}"
+        description: Sauvegarde, mise à jour de la console, puis des Runners (arrêt au premier échec)
+        organization: "{{ awx_organization }}"
+        inventory: "{{ awx_inventory_name }}"
+        ask_variables_on_launch: true         # platform_version, runner_version…
+        workflow_nodes:
+          - identifier: sauvegarde
+            unified_job_template:
+              name: "{{ awx_jt_backup }}"
+              type: job_template
+            related:
+              success_nodes:
+                - identifier: console
+          - identifier: console
+            unified_job_template:
+              name: "{{ awx_jt_platform }}"
+              type: job_template
+            related:
+              success_nodes:
+                - identifier: runners
+          - identifier: runners
+            unified_job_template:
+              name: "{{ awx_jt_runners }}"
+              type: job_template
+        destroy_current_nodes: true

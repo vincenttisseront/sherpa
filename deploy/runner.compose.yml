@@ -1,0 +1,37 @@
+# Target Runner sur un hôte cible. Les racines sont montées AUX MÊMES CHEMINS
+# que sur l'hôte : les chemins vus par la plateforme et par Docker coïncident.
+name: platform-runner
+
+services:
+  runner:
+    image: sherpa-runner:${RUNNER_VERSION:-latest}
+    user: "${RUNNER_UID:?UID propriétaire des racines}:${RUNNER_GID:?GID}"
+    environment:
+      RUNNER_PORT: 8443
+      RUNNER_ROOTS: /srv/deployments,/srv/builds,/srv/tmp,/srv/apps-data
+      RUNNER_HMAC_KEY_FILE: /run/secrets/runner_hmac
+      RUNNER_TLS_CERT_FILE: /run/secrets/runner_cert
+      RUNNER_TLS_KEY_FILE: /run/secrets/runner_key
+      RUNNER_CLIENT_CA_FILE: /run/secrets/platform_ca
+    secrets: [runner_hmac, runner_cert, runner_key, platform_ca]
+    # Build : accès au moteur Docker local (GID du groupe docker de l'hôte).
+    group_add: ["${DOCKER_GID:?GID du groupe docker de l'hôte}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/deployments:/srv/deployments
+      - /srv/builds:/srv/builds
+      - /srv/tmp:/srv/tmp
+      - /srv/apps-data:/srv/apps-data
+    ports:
+      # Exposé uniquement sur l'interface du réseau d'administration.
+      - "${RUNNER_BIND_IP:?IP d'administration}:8443:8443"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+secrets:
+  runner_hmac: { file: ./secrets/hmac.key }
+  runner_cert: { file: ./secrets/runner.crt }
+  runner_key: { file: ./secrets/runner.key }
+  platform_ca: { file: ./secrets/platform-ca.crt }

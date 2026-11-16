@@ -1,0 +1,153 @@
+- name: Image déjà présente sur l'hôte ?
+  ansible.builtin.command: docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' {{ platform_image | quote }}
+  register: platform_image_present
+  changed_when: false
+  failed_when: false
+
+# Mode build : l'image porte la révision des sources (label platform.revision) ; un même tag
+# (platform_version inchangée) est reconstruit dès que les sources changent.
+- name: Révision des sources (commit, sinon empreinte du contenu)
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      if git -C {{ platform_repo_dir | quote }} rev-parse --git-dir >/dev/null 2>&1; then
+      git -C {{ platform_repo_dir | quote }} rev-parse --short=12 {{ (platform_git_ref ~ '^{commit}') | quote }};
+      else
+      cd {{ platform_repo_dir | quote }} && find . \( -path ./node_modules -o -path ./.data -o -path ./.output -o -path ./.nuxt
+      -o -path ./deploy/ansible/.cache -o -path ./deploy/ansible/collections -o -path ./.git \) -prune -o -type f -print0
+      | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12;
+      fi
+    executable: /bin/bash
+  register: platform_source_revision
+  changed_when: false
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: platform_image_source == 'build'
+
+- name: Révision de l'image présente
+  ansible.builtin.command: docker image inspect --format '{{ "{{" }}index .Config.Labels "platform.revision"{{ "}}" }}' {{ platform_image | quote }}
+  register: platform_image_revision
+  changed_when: false
+  failed_when: false
+  when: platform_image_source == 'build' and platform_image_present.rc == 0
+
+- name: Image à construire ?
+  ansible.builtin.set_fact:
+    platform_revision: "{{ platform_source_revision.stdout | default('') | trim }}"
+    platform_build_needed: >-
+      {{ platform_image_source == 'build' and (platform_image_present.rc != 0
+         or (platform_image_revision.stdout | default('') | trim) != (platform_source_revision.stdout | default('') | trim)) }}
+
+- name: Révision construite
+  ansible.builtin.debug:
+    msg: >-
+      Sources {{ platform_revision }} ; image {{ platform_image }}
+      {{ 'à reconstruire (révision ' ~ (platform_image_revision.stdout | default('absente') | trim or 'absente') ~ ' en place)' if platform_build_needed | bool else 'déjà à jour' }}
+  when: platform_image_source == 'build'
+
+# --- archive : image exportée depuis le poste qui lance Ansible ---
+- name: Archive de l'image (poste local)
+  when: platform_image_source == 'archive' and platform_image_present.rc != 0
+  block:
+    - name: Export local de l'image (docker save)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail &&
+          mkdir -p {{ platform_cache_dir | quote }} &&
+          docker save {{ platform_image | quote }} | gzip -1 > {{ platform_local_archive | quote }}.part &&
+          mv {{ platform_local_archive | quote }}.part {{ platform_local_archive | quote }}
+        executable: /bin/bash
+        creates: "{{ platform_local_archive }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      when: platform_image_archive | length == 0
+
+    - name: Copie de l'archive sur l'hôte
+      ansible.builtin.copy:
+        src: "{{ platform_image_archive if platform_image_archive | length > 0 else platform_local_archive }}"
+        dest: "{{ platform_dir }}/image-{{ platform_version }}.tar.gz"
+        mode: "0600"
+
+    - name: Chargement de l'image (docker load)
+      ansible.builtin.command: docker load -i {{ (platform_dir ~ '/image-' ~ platform_version ~ '.tar.gz') | quote }}
+      changed_when: true
+
+    - name: Archive retirée de l'hôte
+      ansible.builtin.file:
+        path: "{{ platform_dir }}/image-{{ platform_version }}.tar.gz"
+        state: absent
+
+# --- build : sources du dépôt (révision commitée) construites sur l'hôte ---
+- name: Construction de l'image sur l'hôte
+  when: platform_build_needed | bool
+  block:
+    - name: Sources de la révision (poste de contrôle)
+      # git archive de la révision demandée ; sans dépôt Git (copie de projet AWX), archive de l'arborescence synchronisée.
+      ansible.builtin.shell:  # noqa: command-instead-of-module (le module git ne fait pas d'archive d'une révision locale)
+        cmd: >-
+          set -o pipefail;
+          mkdir -p {{ platform_cache_dir | quote }} &&
+          if git -C {{ platform_repo_dir | quote }} rev-parse --git-dir >/dev/null 2>&1; then
+          git -C {{ platform_repo_dir | quote }} archive --format=tar.gz -o {{ platform_local_sources | quote }} {{ platform_revision | quote }};
+          else
+          tar -C {{ platform_repo_dir | quote }} --exclude=./node_modules --exclude=./.data --exclude=./.output --exclude=./.nuxt
+          --exclude=./deploy/ansible/.cache --exclude=./deploy/ansible/collections -czf {{ platform_local_sources | quote }} .;
+          fi
+        executable: /bin/bash
+        creates: "{{ platform_local_sources }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Répertoire de build propre
+      ansible.builtin.file:
+        path: "{{ platform_dir }}/build"
+        state: "{{ item }}"
+        owner: root
+        group: root
+        mode: "0700"
+      loop: [absent, directory]
+
+    - name: Sources copiées sur l'hôte
+      ansible.builtin.copy:
+        src: "{{ platform_local_sources }}"
+        dest: "{{ platform_dir }}/build.tar.gz"
+        mode: "0600"
+
+    # tar plutôt que le module unarchive : fonctionne aussi avec le tar de BusyBox (hôtes Alpine).
+    - name: Sources décompressées sur l'hôte
+      ansible.builtin.command:  # noqa: command-instead-of-module
+        cmd: tar -xzf {{ (platform_dir ~ '/build.tar.gz') | quote }} -C {{ (platform_dir ~ '/build') | quote }}
+      changed_when: true
+
+    - name: AC d'entreprise pour npm (facultatif)
+      ansible.builtin.copy:
+        src: "{{ platform_build_ca_file }}"
+        dest: "{{ platform_dir }}/build/.npm-ca.pem"
+        mode: "0600"
+      when: platform_build_ca_file | length > 0
+
+    - name: Construction docker build (plusieurs minutes)
+      ansible.builtin.command:
+        cmd: >-
+          docker build -t {{ platform_image | quote }}
+          --label platform.revision={{ platform_revision | quote }} --build-arg APP_REVISION={{ platform_revision | quote }}
+          {{ '--secret id=npm_ca,src=.npm-ca.pem' if platform_build_ca_file | length > 0 else '' }} .
+        chdir: "{{ platform_dir }}/build"
+      environment:
+        DOCKER_BUILDKIT: "1"
+      changed_when: true
+
+    - name: Sources retirées de l'hôte
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: ["{{ platform_dir }}/build", "{{ platform_dir }}/build.tar.gz"]
+
+# --- registry : récupérée par Compose au déploiement ---
+- name: Image présente après préparation
+  ansible.builtin.command: docker image inspect {{ platform_image | quote }}
+  changed_when: false
+  when: platform_image_source != 'registry'

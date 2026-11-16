@@ -1,0 +1,1 @@
+ALTER TABLE "project_targets" ADD COLUMN "pending_action" jsonb;

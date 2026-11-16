@@ -1,0 +1,27 @@
+- name: Utilisateur propriétaire des racines
+  ansible.builtin.user:
+    name: "{{ runner_user }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+  when: runner_create_user | bool
+
+- name: UID et GID du propriétaire
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ runner_user }}"
+
+- name: Identité d'exécution du Runner
+  ansible.builtin.set_fact:
+    runner_uid: "{{ ansible_facts.getent_passwd[runner_user][1] }}"
+    runner_gid: "{{ ansible_facts.getent_passwd[runner_user][2] }}"
+    runner_docker_gid: "{{ ansible_facts.getent_group.docker[1] if runner_docker_build | bool else '' }}"
+
+- name: Racines (propriété de l'utilisateur, aucun autre accès)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ runner_user }}"
+    group: "{{ runner_gid }}"
+    mode: "0750"
+  loop: "{{ runner_roots }}"
